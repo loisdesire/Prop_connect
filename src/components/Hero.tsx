@@ -84,7 +84,7 @@ export default function Hero({ onSearch }: HeroProps) {
             </div>
             
             <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
-              {['New York', 'Los Angeles', 'Miami', 'Chicago', 'Austin'].map(city => (
+              {['Lagos', 'Abuja', 'Port Harcourt', 'Ibadan', 'Enugu'].map(city => (
                 <button
                   key={city}
                   onClick={() => { setSearch(city); onSearch({ search: city }); }}
@@ -99,10 +99,10 @@ export default function Hero({ onSearch }: HeroProps) {
         
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
           {[
-            { value: '2,500+', label: 'Active Listings' },
-            { value: '850+', label: 'Verified Agents' },
-            { value: '$2.1B', label: 'In Escrow' },
-            { value: '99.8%', label: 'Success Rate' },
+            { value: '480+', label: 'Active Listings' },
+            { value: '120+', label: 'Verified Agents' },
+            { value: '₦18.4B', label: 'In Escrow' },
+            { value: '99.2%', label: 'Success Rate' },
           ].map((stat, i) => (
             <div key={i} className="text-center">
               <div className="text-2xl font-bold text-white">{stat.value}</div>

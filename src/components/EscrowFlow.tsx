@@ -134,7 +134,7 @@ export default function EscrowFlow() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-semibold">Transaction #TXN-2025-0042</h3>
-                  <p className="text-sm text-slate-400">Modern Waterfront Villa · Miami, FL</p>
+                  <p className="text-sm text-slate-400">Luxury Apartment in Ikoyi · Lagos, Nigeria</p>
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-bold">$500,000</div>
