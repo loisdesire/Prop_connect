@@ -16,6 +16,7 @@ const isActivePath = (currentPath: string, target: string): boolean => {
 export default function Header({ currentPath, onNavigate }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sessionRole, setSessionRole] = useState<'buyer' | 'realtor' | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,12 +25,39 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
       if (cancelled) return;
       const role = (data.session?.user?.user_metadata?.role as 'buyer' | 'realtor' | undefined) || null;
       setSessionRole(role);
+      
+      // Fetch user's full name from profiles table
+      if (data.session?.user?.id) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', data.session.user.id)
+          .single();
+        
+        if (!cancelled) {
+          setUserName(profileData?.full_name || profileData?.email?.split('@')[0] || null);
+        }
+      }
     };
 
     const { data: sub } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       void event;
       const role = (session?.user?.user_metadata?.role as 'buyer' | 'realtor' | undefined) || null;
       setSessionRole(role);
+      
+      // Fetch user's full name when auth state changes
+      if (session?.user?.id) {
+        supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data: profileData }) => {
+            if (profileData) {
+              setUserName(profileData.full_name || profileData.email?.split('@')[0] || null);
+            }
+          });
+      }
     });
 
     loadSession();
@@ -87,6 +115,11 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
                   <button onClick={() => onNavigate('/realtor/portal')} className="text-sm font-medium text-gray-600 hover:text-blue-600 transition">
                     Portal
                   </button>
+                )}
+                {userName && (
+                  <span className="text-sm font-medium text-gray-600">
+                    {userName}
+                  </span>
                 )}
                 <button onClick={handleSignOut} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
                   Sign Out

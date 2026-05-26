@@ -30,8 +30,8 @@ const safeNum = (v: any, fallback: number): number => {
   return fallback;
 };
 
-const formatCurrency = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const formatCurrency = (n: number) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(n);
+const formatDate = (d: string) => new Date(d).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' });
 
 type SubPage = 'overview' | 'listings' | 'leads' | 'transactions' | 'earnings';
 
@@ -42,16 +42,40 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
   const [loading, setLoading] = useState(true);
   const [showNewListing, setShowNewListing] = useState(false);
   const [expandedLead, setExpandedLead] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   
   useEffect(() => {
-    fetch('/api/realtor')
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(err => { console.error(err); setLoading(false); });
+    const loadData = async () => {
+      try {
+        // Get current user session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          // Fetch user profile
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          setCurrentUser({ ...profileData, email: session.user.email });
+        }
+        
+        // Fetch API data
+        const res = await fetch('/api/realtor');
+        const d = await res.json();
+        setData(d);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
   }, []);
 
   const s = data?.stats || {};
-  const agent = data?.agent || {};
+  const agent = currentUser && Object.keys(currentUser).length > 0 ? currentUser : (data?.agent || {});
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

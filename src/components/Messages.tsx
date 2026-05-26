@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, MessageSquare, ArrowLeft, User, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import supabase from '../lib/supabase';
 
 interface Message {
   id: number;
@@ -25,10 +26,34 @@ export default function Messages({ onBack }: MessagesProps) {
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [currentUserName, setCurrentUserName] = useState<string>('User');
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
-    fetchMessages();
+    const loadCurrentUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        setCurrentUserId(session.user.id);
+        
+        // Fetch user's profile
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profileData?.full_name) {
+          setCurrentUserName(profileData.full_name);
+        } else if (profileData?.email) {
+          setCurrentUserName(profileData.email.split('@')[0]);
+        }
+      }
+      
+      fetchMessages();
+    };
+    
+    loadCurrentUser();
   }, []);
   
   useEffect(() => {
@@ -67,10 +92,10 @@ export default function Messages({ onBack }: MessagesProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sender_id: 'user-demo',
-          sender_name: 'Demo Buyer',
+          sender_id: currentUserId,
+          sender_name: currentUserName,
           receiver_id: receiverId,
-          receiver_name: lastMsg?.sender_name === 'Demo Buyer' ? lastMsg.receiver_name : lastMsg?.sender_name,
+          receiver_name: lastMsg?.sender_name === currentUserName ? lastMsg.receiver_name : lastMsg?.sender_name,
           content: newMessage,
         }),
       });

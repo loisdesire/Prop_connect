@@ -93,17 +93,17 @@ create policy "Profiles are updatable by owner"
   on public.profiles for update
   using (auth.uid() = id);
 
--- Seed sample data
+-- Seed sample data (Nigerian market)
 insert into public.agents (name, email, phone, bio, company, license, rating, reviews_count)
 values
-  ('Ava Thompson', 'ava@proptrust.com', '555-210-8890', 'Luxury coastal specialist with 12 years of experience.', 'PropTrust Realty', 'LIC-AVT-7743', 4.9, 128),
-  ('Marcus Lee', 'marcus@proptrust.com', '555-882-1133', 'First-time buyer guide and neighborhood expert.', 'Cityline Homes', 'LIC-ML-2281', 4.7, 84),
-  ('Sophia Ramirez', 'sophia@proptrust.com', '555-771-9922', 'Modern condos and investment properties.', 'Skyline Partners', 'LIC-SR-5409', 4.8, 102)
+  ('Chioma Okafor', 'chioma@propconnect.ng', '+234-805-123-4567', 'Luxury property specialist with 10+ years in Lagos real estate market.', 'PropConnect Realty Ltd', 'RC-127433', 4.9, 128),
+  ('Tunde Adeyemi', 'tunde@propconnect.ng', '+234-807-456-7890', 'Expert in Abuja residential and commercial properties.', 'Capital Properties', 'RC-089122', 4.7, 84),
+  ('Zainab Ibrahim', 'zainab@propconnect.ng', '+234-803-789-0123', 'Investment properties and mixed-use developments across Nigeria.', 'Future Homes Ltd', 'RC-145690', 4.8, 102)
 on conflict do nothing;
 
 insert into public.properties (agent_id, title, description, price, bedrooms, bathrooms, sqft, address, city, state, zip, type, status, images, features)
 values
-  (1, 'Seaside Modern Villa', 'Ocean views with floor-to-ceiling glass and private pool.', 1950000, 4, 3.5, 3200, '128 Ocean Crest', 'Santa Monica', 'CA', '90401', 'house', 'available', '["https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200&h=800&fit=crop"]', '["Ocean view","Pool","Smart home"]'),
-  (2, 'Downtown Loft Retreat', 'Open-plan loft with skyline views and concierge amenities.', 850000, 2, 2, 1350, '44 Market St', 'Chicago', 'IL', '60601', 'condo', 'available', '["https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&h=800&fit=crop"]', '["Concierge","Gym","Skyline view"]'),
-  (3, 'Riverside Townhome', 'Walkable riverside community with private rooftop deck.', 620000, 3, 2.5, 1850, '902 Riverwalk Ave', 'Austin', 'TX', '78701', 'townhouse', 'pending', '["https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&h=800&fit=crop"]', '["Rooftop deck","Garage","Smart locks"]')
+  (1, 'Luxury Apartment in Ikoyi', 'Premium 4-bedroom penthouse with panoramic Lagos lagoon views, fully furnished with smart home features.', 850000000, 4, 3.5, 3200, '15 Bourdillon Road', 'Lagos', 'Lagos', 'LG101', 'apartment', 'available', '["https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200&h=800&fit=crop"]', '["Lagoon view","Swimming pool","24/7 Security","Smart home"]'),
+  (2, 'Modern Apartment in Central Abuja', '3-bedroom contemporary apartment in prime Maitama district with world-class amenities and gated security.', 250000000, 3, 2.5, 1950, '89 Gimbiya Street', 'Abuja', 'FCT', 'AB900', 'apartment', 'available', '["https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&h=800&fit=crop"]', '["Concierge service","Gym & Spa","24/7 Power"]'),
+  (3, 'Estate Townhouse in Lekki Phase 1', '3-bedroom townhouse in gated residential estate with common gardens and backup power system.', 120000000, 3, 2.5, 1850, '12 Admiralty Road', 'Lagos', 'Lagos', 'LG106', 'townhouse', 'pending', '["https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&h=800&fit=crop"]', '["Gated estate","Generator/Solar","Smart locks","Community center"]')
 on conflict do nothing;
