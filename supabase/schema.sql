@@ -80,18 +80,51 @@ create index if not exists idx_transactions_property_id on public.transactions(p
 create index if not exists idx_profiles_role on public.profiles(role);
 
 alter table public.profiles enable row level security;
+-- Create policies only if they do not already exist to make schema idempotent
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies p
+    WHERE p.policyname = 'Profiles are viewable by owner'
+      AND p.schemaname = 'public'
+      AND p.tablename = 'profiles'
+  ) THEN
+    CREATE POLICY "Profiles are viewable by owner"
+      ON public.profiles FOR SELECT
+      USING (auth.uid() = id);
+  END IF;
+END
+$$;
 
-create policy "Profiles are viewable by owner"
-  on public.profiles for select
-  using (auth.uid() = id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies p
+    WHERE p.policyname = 'Profiles are insertable by owner'
+      AND p.schemaname = 'public'
+      AND p.tablename = 'profiles'
+  ) THEN
+    CREATE POLICY "Profiles are insertable by owner"
+      ON public.profiles FOR INSERT
+      WITH CHECK (auth.uid() = id);
+  END IF;
+END
+$$;
 
-create policy "Profiles are insertable by owner"
-  on public.profiles for insert
-  with check (auth.uid() = id);
-
-create policy "Profiles are updatable by owner"
-  on public.profiles for update
-  using (auth.uid() = id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies p
+    WHERE p.policyname = 'Profiles are updatable by owner'
+      AND p.schemaname = 'public'
+      AND p.tablename = 'profiles'
+  ) THEN
+    CREATE POLICY "Profiles are updatable by owner"
+      ON public.profiles FOR UPDATE
+      USING (auth.uid() = id);
+  END IF;
+END
+$$;
 
 -- Seed sample data (Nigerian market)
 insert into public.agents (name, email, phone, bio, company, license, rating, reviews_count)
@@ -106,4 +139,13 @@ values
   (1, 'Luxury Apartment in Ikoyi', 'Premium 4-bedroom penthouse with panoramic Lagos lagoon views, fully furnished with smart home features.', 850000000, 4, 3.5, 3200, '15 Bourdillon Road', 'Lagos', 'Lagos', 'LG101', 'apartment', 'available', '["https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200&h=800&fit=crop"]', '["Lagoon view","Swimming pool","24/7 Security","Smart home"]'),
   (2, 'Modern Apartment in Central Abuja', '3-bedroom contemporary apartment in prime Maitama district with world-class amenities and gated security.', 250000000, 3, 2.5, 1950, '89 Gimbiya Street', 'Abuja', 'FCT', 'AB900', 'apartment', 'available', '["https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&h=800&fit=crop"]', '["Concierge service","Gym & Spa","24/7 Power"]'),
   (3, 'Estate Townhouse in Lekki Phase 1', '3-bedroom townhouse in gated residential estate with common gardens and backup power system.', 120000000, 3, 2.5, 1850, '12 Admiralty Road', 'Lagos', 'Lagos', 'LG106', 'townhouse', 'pending', '["https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&h=800&fit=crop"]', '["Gated estate","Generator/Solar","Smart locks","Community center"]')
+on conflict do nothing;
+
+-- Seed messages (Nigerian context)
+insert into public.messages (sender_id, sender_name, receiver_id, receiver_name, property_id, property_title, content)
+values
+  ('buyer-amaka','Amaka Umeh','agent-chioma','Chioma Okafor', 1, 'Luxury Apartment in Ikoyi', 'Hello Chioma — is the Ikoyi penthouse still available for viewing this weekend?'),
+  ('agent-chioma','Chioma Okafor','buyer-amaka','Amaka Umeh', 1, 'Luxury Apartment in Ikoyi', 'Hi Amaka, yes it is available — I have slots on Saturday afternoon or Sunday morning.'),
+  ('buyer-emeka','Emeka Nwosu','agent-tunde','Tunde Adeyemi', 2, 'Modern Apartment in Central Abuja', 'Could you confirm if the maintenance fee is monthly or annual?'),
+  ('agent-tunde','Tunde Adeyemi','buyer-emeka','Emeka Nwosu', 2, 'Modern Apartment in Central Abuja', 'Maintenance fee is monthly and covers security and common area upkeep.')
 on conflict do nothing;
