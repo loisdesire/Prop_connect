@@ -48,7 +48,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
   const stats = [
     { label: 'Active Listings', value: String(availableCount), icon: Home, color: 'blue', change: '+2 this week' },
-    { label: 'Total Value', value: `$${(totalValue / 1000000).toFixed(1)}M`, icon: DollarSign, color: 'emerald', change: '+12%' },
+    { label: 'Total Value', value: `₦${(totalValue / 1000000).toFixed(1)}M`, icon: DollarSign, color: 'emerald', change: '+12%' },
     { label: 'In Escrow', value: String(inEscrowCount), icon: ShieldIcon, color: 'violet', change: `${inEscrowCount} pending` },
     { label: 'Total Views', value: '12.4K', icon: Eye, color: 'amber', change: '+23%' },
   ];
@@ -114,7 +114,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                     <p className="text-xs text-gray-500">{prop.city || ''}, {prop.state || ''} · {prop.bedrooms ?? '-'}bd/{prop.bathrooms ?? '-'}ba</p>
                   </div>
                   <div className="text-right">
-                    <div className="font-semibold text-gray-900 text-sm">${safeNum(prop.price, 0).toLocaleString()}</div>
+                    <div className="font-semibold text-gray-900 text-sm">₦{safeNum(prop.price, 0).toLocaleString('en-NG')}</div>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded ${
                       prop.status === 'available' ? 'bg-green-50 text-green-600' :
                       prop.status === 'pending' ? 'bg-amber-50 text-amber-600' :
@@ -147,7 +147,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 capitalize">{txn.status}</p>
-                    <p className="text-xs text-gray-500">${safeNum(txn.amount, 0).toLocaleString()}</p>
+                    <p className="text-xs text-gray-500">₦{safeNum(txn.amount, 0).toLocaleString('en-NG')}</p>
                   </div>
                 </div>
               )) : (

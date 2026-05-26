@@ -34,7 +34,7 @@ export default function PropertyDetail({ property, onBack, onMessageAgent, onSta
   const bathrooms = safeNum(property.bathrooms, 0);
   const sqft = safeNum(property.sqft, 0);
   
-  const formatPrice = (p: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(p);
+  const formatPrice = (p: number) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(p);
 
   const imageUrls: Record<string, string> = {
     house: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200&h=800&fit=crop',

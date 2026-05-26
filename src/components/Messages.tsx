@@ -84,7 +84,7 @@ export default function Messages({ onBack }: MessagesProps) {
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedConv) return;
     
-    const [senderId, receiverId] = selectedConv.split('-');
+    const [, receiverId] = selectedConv.split('-');
     const lastMsg = conversations.get(selectedConv)?.[0];
     
     try {
@@ -95,7 +95,7 @@ export default function Messages({ onBack }: MessagesProps) {
           sender_id: currentUserId,
           sender_name: currentUserName,
           receiver_id: receiverId,
-          receiver_name: lastMsg?.sender_name === currentUserName ? lastMsg.receiver_name : lastMsg?.sender_name,
+          receiver_name: lastMsg?.sender_id === currentUserId ? lastMsg.receiver_name : lastMsg?.sender_name,
           content: newMessage,
         }),
       });
@@ -137,7 +137,7 @@ export default function Messages({ onBack }: MessagesProps) {
               <div className="flex-1 overflow-y-auto">
                 {Array.from(conversations.entries()).map(([key, msgs]) => {
                   const lastMsg = msgs[msgs.length - 1];
-                  const otherName = lastMsg.sender_name === 'Demo Buyer' ? lastMsg.receiver_name : lastMsg.sender_name;
+                  const otherName = lastMsg.sender_id === currentUserId ? lastMsg.receiver_name : lastMsg.sender_name;
                   const isSelected = selectedConv === key;
                   
                   return (
@@ -181,11 +181,11 @@ export default function Messages({ onBack }: MessagesProps) {
                       <ArrowLeft className="w-5 h-5" />
                     </button>
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-sm font-bold">
-                      {(selectedMessages[0]?.sender_name === 'Demo Buyer' ? selectedMessages[0]?.receiver_name : selectedMessages[0]?.sender_name)?.charAt(0)}
+                      {(selectedMessages[0]?.sender_id === currentUserId ? selectedMessages[0]?.receiver_name : selectedMessages[0]?.sender_name)?.charAt(0)}
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">
-                        {selectedMessages[0]?.sender_name === 'Demo Buyer' ? selectedMessages[0]?.receiver_name : selectedMessages[0]?.sender_name}
+                        {selectedMessages[0]?.sender_id === currentUserId ? selectedMessages[0]?.receiver_name : selectedMessages[0]?.sender_name}
                       </h3>
                       {selectedMessages[0]?.property_title && (
                         <p className="text-xs text-blue-600">Re: {selectedMessages[0].property_title}</p>
@@ -199,15 +199,15 @@ export default function Messages({ onBack }: MessagesProps) {
                         key={msg.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className={`flex ${msg.sender_name === 'Demo Buyer' ? 'justify-end' : 'justify-start'}`}
+                        className={`flex ${msg.sender_id === currentUserId ? 'justify-end' : 'justify-start'}`}
                       >
                         <div className={`max-w-[75%] px-4 py-3 rounded-2xl ${
-                          msg.sender_name === 'Demo Buyer'
+                          msg.sender_id === currentUserId
                             ? 'bg-blue-600 text-white rounded-br-md'
                             : 'bg-gray-100 text-gray-900 rounded-bl-md'
                         }`}>
                           <p className="text-sm leading-relaxed">{msg.content}</p>
-                          <p className={`text-xs mt-1 ${msg.sender_name === 'Demo Buyer' ? 'text-blue-200' : 'text-gray-400'}`}>
+                          <p className={`text-xs mt-1 ${msg.sender_id === currentUserId ? 'text-blue-200' : 'text-gray-400'}`}>
                             {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>

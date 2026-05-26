@@ -52,6 +52,8 @@ export default function BuyerApp() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>('guest-user');
+  const [currentUserName, setCurrentUserName] = useState<string>('Buyer');
 
   const fetchProperties = useCallback(async (filterParams?: FilterState) => {
     setLoading(true);
@@ -106,6 +108,30 @@ export default function BuyerApp() {
   }, [fetchAgents, fetchProperties]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled || !session?.user) return;
+
+      setCurrentUserId(session.user.id);
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      setCurrentUserName(profileData?.full_name || session.user.email?.split('@')[0] || 'Buyer');
+    };
+
+    void loadUser();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
@@ -134,10 +160,10 @@ export default function BuyerApp() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sender_id: String(agentId),
-        sender_name: agentName,
-        receiver_id: 'user-demo',
-        receiver_name: 'Demo Buyer',
+        sender_id: currentUserId,
+        sender_name: currentUserName,
+        receiver_id: String(agentId),
+        receiver_name: agentName,
         property_title: propertyName,
         content: `Hi! Thanks for your interest in "${propertyName}". I'd love to tell you more about this property and schedule a showing. When works best for you?`,
       }),
@@ -156,8 +182,8 @@ export default function BuyerApp() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         property_id: property.id,
-        buyer_id: 'user-demo',
-        buyer_name: 'Demo Buyer',
+        buyer_id: currentUserId,
+        buyer_name: currentUserName,
         agent_id: property.agent_id,
         amount,
       }),
@@ -165,7 +191,7 @@ export default function BuyerApp() {
       .then(async res => {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Escrow failed');
-        alert(`✅ Escrow Initiated!\n\nProperty: ${property.title}\nAmount: $${amount.toLocaleString()}\n\nYour funds are now protected by PropTrust Escrow. Navigate to "How It Works" to see the milestone process.`);
+        alert(`✅ Escrow Initiated!\n\nProperty: ${property.title}\nAmount: ₦${amount.toLocaleString('en-NG')}\n\nYour funds are now protected by PropTrust Escrow. Navigate to "How It Works" to see the milestone process.`);
       })
       .catch(err => alert(`Error: ${err.message}`));
   };
@@ -503,7 +529,7 @@ export default function BuyerApp() {
                         <img src={(safeJsonArr(prop.images)[0]) || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=100&h=80&fit=crop'} alt="" className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0"><p className="text-sm font-medium text-gray-900 truncate">{safeStr(prop.title)}</p><p className="text-xs text-gray-500">{safeStr(prop.city)}, {safeStr(prop.state)}</p></div>
-                      <span className="text-sm font-semibold text-gray-900">${safeNum(prop.price, 0).toLocaleString()}</span>
+                      <span className="text-sm font-semibold text-gray-900">₦{safeNum(prop.price, 0).toLocaleString('en-NG')}</span>
                     </div>
                   ))}
                 </div>

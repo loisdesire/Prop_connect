@@ -76,7 +76,7 @@ export default function EscrowFlow() {
             </div>
             <div className="flex-1 text-center md:text-left">
               <h2 className="text-2xl font-bold mb-2">Bank-Level Security for Every Transaction</h2>
-              <p className="text-blue-100">All funds are held in FDIC-insured escrow accounts. Multi-signature approval required for every disbursement. Full audit trail available 24/7.</p>
+              <p className="text-blue-100">All funds are held in regulated escrow accounts. Multi-signature approval required for every disbursement. Full audit trail available 24/7.</p>
             </div>
           </div>
         </motion.div>
