@@ -17,6 +17,8 @@ export interface Property {
   features: string[] | string | null;
   lat?: number | string | null;
   lng?: number | string | null;
+  created_at?: string | null;
+  amenities?: string[] | string | null;
   agents?: {
     id: number;
     name: string;

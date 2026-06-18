@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Header from './components/Header';
+import Sidebar from './components/Sidebar';
 import Hero from './components/Hero';
 import PropertyCard from './components/PropertyCard';
 import SearchFilters, { FilterState } from './components/SearchFilters';
@@ -39,7 +40,12 @@ export default function BuyerApp() {
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('guest-user');
   const [currentUserName, setCurrentUserName] = useState<string>('Buyer');
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<'buyer' | 'realtor' | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
 
   const fetchProperties = useCallback(async (filterParams?: FilterState) => {
     setLoading(true);
@@ -135,7 +141,6 @@ export default function BuyerApp() {
       if (cancelled) return;
       
       if (session?.user) {
-        // If the signed-in user is a realtor, redirect to the realtor portal
         const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
@@ -147,26 +152,13 @@ export default function BuyerApp() {
           return;
         }
 
+        if (cancelled) return;
         setIsAuthenticated(true);
         setCurrentUserId(session.user.id);
-        if (!profileData) {
-          // fetch again just in case
-          const { data: pd } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-          if (cancelled) return;
-          setCurrentUserName(pd?.first_name || (session.user.email ? session.user.email.split('@')[0] : 'Buyer') || 'Buyer');
-        } else {
-          if (cancelled) return;
-          setCurrentUserName(profileData?.first_name || (session.user.email ? session.user.email.split('@')[0] : 'Buyer') || 'Buyer');
-        }
-
-        // Only redirect to listings on the initial authenticated landing page.
-        if (window.location.pathname === '/') {
-          navigate('/listings', { replace: true });
-        }
+        setCurrentUserEmail(profileData?.email || session.user.email || null);
+        setCurrentUserAvatar(profileData?.avatar_url || null);
+        setCurrentUserRole((profileData?.role as 'buyer' | 'realtor' | null) || 'buyer');
+        setCurrentUserName(profileData?.first_name || profileData?.full_name || (session.user.email ? session.user.email.split('@')[0] : 'Buyer') || 'Buyer');
       } else {
         setIsAuthenticated(false);
       }
@@ -186,6 +178,11 @@ export default function BuyerApp() {
     setFilters(searchFilters);
     navigate('/listings');
     fetchProperties(searchFilters);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.assign('/');
   };
 
   const handleFilterChange = (newFilters: FilterState) => {
@@ -238,11 +235,146 @@ export default function BuyerApp() {
       });
   };
 
-  const renderHome = () => (
-    <>
-      <Hero onSearch={handleSearch} compact={isAuthenticated} />
+  const renderHome = () => {
+    if (isAuthenticated) {
+      const hour = new Date().getHours();
+      const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+      const firstName = currentUserName?.split(' ')[0] || 'there';
+      const hotProperties = [...properties].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 4);
 
-      {!isAuthenticated && (
+      return (
+        <div className="min-h-full bg-gray-50">
+          {/* Welcome banner */}
+          <div className="bg-white border-b border-gray-100 px-6 py-8">
+            <div className="max-w-6xl mx-auto">
+              <h1 className="text-2xl font-bold text-gray-900">{greeting}, {firstName} 👋</h1>
+              <p className="text-gray-500 mt-1">Here's what's happening on PropConnect today.</p>
+
+              {/* Quick search */}
+              <div className="mt-5 flex items-center gap-3 max-w-xl">
+                <div className="flex-1 relative">
+                  <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by city, type, or price…"
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = (e.target as HTMLInputElement).value.trim();
+                        if (val) { handleSearch({ search: val }); }
+                      }
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => navigate('/listings')}
+                  className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition"
+                >
+                  Browse All
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="max-w-6xl mx-auto px-6 py-8 space-y-12">
+            {/* Hot right now */}
+            <section>
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-orange-500" /> Hot right now
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-0.5">Newest listings on the platform</p>
+                </div>
+                <button onClick={() => navigate('/listings')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition">
+                  See all <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              {loading ? (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
+                      <div className="h-40 bg-gray-200" />
+                      <div className="p-4 space-y-2"><div className="h-4 bg-gray-200 rounded w-3/4" /><div className="h-3 bg-gray-100 rounded w-1/2" /></div>
+                    </div>
+                  ))}
+                </div>
+              ) : hotProperties.length === 0 ? (
+                <p className="text-gray-400 text-sm">No listings yet — check back soon.</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {hotProperties.map((property, i) => (
+                    <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Browse listings */}
+            <section>
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Browse listings</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">{properties.length > 0 ? `${properties.length} properties available` : 'Find your perfect home'}</p>
+                </div>
+                <button onClick={() => navigate('/listings')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition">
+                  View all <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              {loading ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
+                      <div className="h-48 bg-gray-200" />
+                      <div className="p-5 space-y-3"><div className="h-4 bg-gray-200 rounded w-3/4" /><div className="h-3 bg-gray-100 rounded w-1/2" /></div>
+                    </div>
+                  ))}
+                </div>
+              ) : properties.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
+                  <BuildingIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No properties yet.</p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {properties.slice(0, 6).map((property, i) => (
+                    <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Top agents */}
+            <section>
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Top agents</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">Connect with trusted professionals</p>
+                </div>
+                <button onClick={() => navigate('/agents')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition">
+                  View all <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              {agents.length > 0 ? (
+                <div className="grid md:grid-cols-3 gap-5">
+                  {agents.slice(0, 3).map((agent, i) => (
+                    <AgentCard key={agent.id} agent={agent} onSelect={handleViewAgent} index={i} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm">Loading agents…</p>
+              )}
+            </section>
+          </div>
+        </div>
+      );
+    }
+
+    // Guest home
+    return (
+      <>
+        <Hero onSearch={handleSearch} compact={false} />
+
         <section className="py-10 bg-white">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-blue-50 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -254,58 +386,49 @@ export default function BuyerApp() {
             </div>
           </div>
         </section>
-      )}
 
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-end justify-between mb-10">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900">Featured Properties</h2>
-              <p className="text-gray-500 mt-2">Hand-picked listings from our top-rated agents</p>
-            </div>
-            <button onClick={() => navigate('/listings')} className="hidden md:flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700 transition">
-              View All <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 animate-pulse">
-                  <div className="h-52 bg-gray-200" />
-                  <div className="p-5 space-y-3">
-                    <div className="h-5 bg-gray-200 rounded w-3/4" />
-                    <div className="h-4 bg-gray-200 rounded w-1/2" />
-                    <div className="h-8 bg-gray-100 rounded" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : error ? (
-            <div className="text-center py-20">
-              <BuildingIcon className="w-16 h-16 text-red-200 mx-auto mb-4" />
-              <p className="text-red-600 font-medium mb-4">{error}</p>
-              <button onClick={() => fetchProperties()} className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition">
-                Try Again
+        <section className="py-16 bg-gray-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-end justify-between mb-10">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900">Featured Properties</h2>
+                <p className="text-gray-500 mt-2">Hand-picked listings from our top-rated agents</p>
+              </div>
+              <button onClick={() => navigate('/listings')} className="hidden md:flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700 transition">
+                View All <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-          ) : properties.length === 0 ? (
-            <div className="text-center py-20">
-              <BuildingIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No properties yet</h3>
-              <p className="text-gray-500">Check back soon for new listings.</p>
-            </div>
-          ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {properties.slice(0, 6).map((property, i) => (
-                <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
+            {loading ? (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 animate-pulse">
+                    <div className="h-52 bg-gray-200" />
+                    <div className="p-5 space-y-3"><div className="h-5 bg-gray-200 rounded w-3/4" /><div className="h-4 bg-gray-200 rounded w-1/2" /><div className="h-8 bg-gray-100 rounded" /></div>
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              <div className="text-center py-20">
+                <BuildingIcon className="w-16 h-16 text-red-200 mx-auto mb-4" />
+                <p className="text-red-600 font-medium mb-4">{error}</p>
+                <button onClick={() => fetchProperties()} className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition">Try Again</button>
+              </div>
+            ) : properties.length === 0 ? (
+              <div className="text-center py-20">
+                <BuildingIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">No properties yet</h3>
+                <p className="text-gray-500">Check back soon for new listings.</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {properties.slice(0, 6).map((property, i) => (
+                  <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
 
-      {!isAuthenticated && (
         <section className="py-20 bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
@@ -331,32 +454,30 @@ export default function BuyerApp() {
             </div>
           </div>
         </section>
-      )}
 
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-end justify-between mb-10">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900">Top Agents</h2>
-              <p className="text-gray-500 mt-2">Connect with our most trusted professionals</p>
+        <section className="py-16 bg-gray-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-end justify-between mb-10">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900">Top Agents</h2>
+                <p className="text-gray-500 mt-2">Connect with our most trusted professionals</p>
+              </div>
+              <button onClick={() => navigate('/agents')} className="hidden md:flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700 transition">
+                View All Agents <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
-            <button onClick={() => navigate('/agents')} className="hidden md:flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700 transition">
-              View All Agents <ChevronRight className="w-4 h-4" />
-            </button>
+            {agents.length > 0 ? (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {agents.slice(0, 3).map((agent, i) => (
+                  <AgentCard key={agent.id} agent={agent} onSelect={handleViewAgent} index={i} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-400">Loading agents...</div>
+            )}
           </div>
-          {agents.length > 0 ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {agents.slice(0, 3).map((agent, i) => (
-                <AgentCard key={agent.id} agent={agent} onSelect={handleViewAgent} index={i} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 text-gray-400">Loading agents...</div>
-          )}
-        </div>
-      </section>
+        </section>
 
-      {!isAuthenticated && (
         <section className="py-20 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
@@ -371,9 +492,9 @@ export default function BuyerApp() {
             </motion.div>
           </div>
         </section>
-      )}
-    </>
-  );
+      </>
+    );
+  };
 
   const renderListings = () => (
     <div className="min-h-screen bg-gray-50">
@@ -659,28 +780,62 @@ export default function BuyerApp() {
     return <Services slug={slug} onBack={() => navigate('/services')} onNavigate={(p) => navigate(p)} />;
   };
 
+  const mainContent = (
+    <motion.div key={location.pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
+      <Routes>
+        <Route index element={renderHome()} />
+        <Route path="listings" element={renderListings()} />
+        <Route path="agents" element={renderAgents()} />
+        <Route path="messages" element={<RequireAuth><Messages onBack={() => navigate('/listings')} /></RequireAuth>} />
+        <Route path="escrow" element={<EscrowFlow />} />
+        <Route path="dashboard" element={<Dashboard onNavigate={(page) => navigate(pageToPath(page))} />} />
+        <Route path="profile" element={<RequireAuth><ProfilePage onBack={() => navigate(-1)} /></RequireAuth>} />
+        <Route path="signin" element={<SignupChoice mode="signin" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/')} />} />
+        <Route path="signup" element={<SignupChoice mode="signup" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/')} />} />
+        <Route path="signup-success" element={<SignupSuccess />} />
+        <Route path="properties/:id" element={<PropertyDetailRoute />} />
+        <Route path="agents/:id" element={<AgentProfileRoute />} />
+        <Route path="services" element={<Services onNavigate={(p) => navigate(p)} />} />
+        <Route path="services/:slug" element={<ServicesDetailRoute />} />
+      </Routes>
+    </motion.div>
+  );
+
+  if (isAuthenticated) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-gray-50">
+        <Sidebar
+          currentPath={location.pathname}
+          onNavigate={(path) => navigate(path)}
+          onSignOut={handleSignOut}
+          userName={currentUserName}
+          userEmail={currentUserEmail}
+          userAvatar={currentUserAvatar}
+          userRole={currentUserRole}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          mobileOpen={sidebarMobileOpen}
+          onMobileClose={() => setSidebarMobileOpen(false)}
+        />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header
+            currentPath={location.pathname}
+            onNavigate={(page) => navigate(pageToPath(page))}
+            isAuthenticated={true}
+            onMenuToggle={() => setSidebarMobileOpen(true)}
+          />
+          <main className="flex-1 overflow-y-auto">
+            {mainContent}
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
-      <Header currentPath={location.pathname} onNavigate={(page) => navigate(pageToPath(page))} />
-      <motion.div key={location.pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
-        <Routes>
-          <Route index element={renderHome()} />
-          <Route path="listings" element={renderListings()} />
-          <Route path="agents" element={renderAgents()} />
-          <Route path="messages" element={<RequireAuth><Messages onBack={() => navigate('/listings')} /></RequireAuth>} />
-          <Route path="escrow" element={<EscrowFlow />} />
-          <Route path="dashboard" element={<Dashboard onNavigate={(page) => navigate(pageToPath(page))} />} />
-          <Route path="profile" element={<RequireAuth><ProfilePage onBack={() => navigate(-1)} /></RequireAuth>} />
-          <Route path="signin" element={<SignupChoice mode="signin" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/listings')} />} />
-          <Route path="signup" element={<SignupChoice mode="signup" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/listings')} />} />
-          <Route path="signup-success" element={<SignupSuccess />} />
-          <Route path="properties/:id" element={<PropertyDetailRoute />} />
-          <Route path="agents/:id" element={<AgentProfileRoute />} />
-          <Route path="services" element={<Services onNavigate={(p) => navigate(p)} />} />
-          <Route path="services/:slug" element={<ServicesDetailRoute />} />
-        </Routes>
-      </motion.div>
-
+      <Header currentPath={location.pathname} onNavigate={(page) => navigate(pageToPath(page))} isAuthenticated={false} />
+      {mainContent}
       <footer className="bg-slate-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8">

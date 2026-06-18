@@ -7,6 +7,8 @@ import { serviceTitleToSlug } from './Services';
 interface HeaderProps {
   currentPath: string;
   onNavigate: (page: string) => void;
+  isAuthenticated?: boolean;
+  onMenuToggle?: () => void;
 }
 
 const isActivePath = (currentPath: string, target: string): boolean => {
@@ -14,7 +16,7 @@ const isActivePath = (currentPath: string, target: string): boolean => {
   return currentPath === target || currentPath.startsWith(`${target}/`);
 };
 
-export default function Header({ currentPath, onNavigate }: HeaderProps) {
+export default function Header({ currentPath, onNavigate, isAuthenticated = false, onMenuToggle }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -137,7 +139,7 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
             <span className="text-xl font-bold text-gray-900">PropTrust</span>
           </button>
           
-          {sessionRole !== 'realtor' && (
+          {!isAuthenticated && sessionRole !== 'realtor' && (
             <nav className="hidden md:flex items-center gap-1">
               {navItems.map(item => (
                 <button
@@ -275,13 +277,19 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
             )}
           </div>
           
-          <button onClick={() => setMobileOpen(!mobileOpen)} className="md:hidden p-2 text-gray-600">
-            {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          {isAuthenticated ? (
+            <button onClick={onMenuToggle} className="md:hidden p-2 text-gray-600">
+              <Menu className="w-6 h-6" />
+            </button>
+          ) : (
+            <button onClick={() => setMobileOpen(!mobileOpen)} className="md:hidden p-2 text-gray-600">
+              {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          )}
         </div>
       </div>
       
-      {mobileOpen && (
+      {mobileOpen && !isAuthenticated && (
         <div className="md:hidden border-t border-gray-100 bg-white">
             <div className="px-4 py-3 space-y-1">
             {sessionRole !== 'realtor' && navItems.map(item => (
