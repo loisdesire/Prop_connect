@@ -59,6 +59,20 @@ export default function SearchFilters({ filters, onFilterChange, resultCount }: 
             </select>
             
             <select
+              value={filters.city || ''}
+              onChange={e => updateFilter('city', e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="">All Cities</option>
+              <option value="Lagos">Lagos</option>
+              <option value="Abuja">Abuja</option>
+              <option value="Lekki">Lekki</option>
+              <option value="Port Harcourt">Port Harcourt</option>
+              <option value="Kano">Kano</option>
+              <option value="Enugu">Enugu</option>
+            </select>
+            
+            <select
               value={filters.bedrooms || ''}
               onChange={e => updateFilter('bedrooms', e.target.value ? parseInt(e.target.value) : undefined)}
               className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
@@ -103,38 +117,38 @@ export default function SearchFilters({ filters, onFilterChange, resultCount }: 
         
         {showAdvanced && (
           <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">Min Price</label>
+          <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">Min Price (₦)</label>
               <select
                 value={filters.minPrice || ''}
                 onChange={e => updateFilter('minPrice', e.target.value ? parseInt(e.target.value) : undefined)}
                 className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">No Min</option>
-                <option value="100000">$100K</option>
-                <option value="200000">$200K</option>
-                <option value="300000">$300K</option>
-                <option value="500000">$500K</option>
-                <option value="750000">$750K</option>
-                <option value="1000000">$1M</option>
-                <option value="2000000">$2M</option>
+                <option value="25000000">₦25M</option>
+                <option value="50000000">₦50M</option>
+                <option value="100000000">₦100M</option>
+                <option value="150000000">₦150M</option>
+                <option value="250000000">₦250M</option>
+                <option value="500000000">₦500M</option>
+                <option value="1000000000">₦1B</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">Max Price</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">Max Price (₦)</label>
               <select
                 value={filters.maxPrice || ''}
                 onChange={e => updateFilter('maxPrice', e.target.value ? parseInt(e.target.value) : undefined)}
                 className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">No Max</option>
-                <option value="300000">$300K</option>
-                <option value="500000">$500K</option>
-                <option value="750000">$750K</option>
-                <option value="1000000">$1M</option>
-                <option value="1500000">$1.5M</option>
-                <option value="2000000">$2M</option>
-                <option value="5000000">$5M+</option>
+                <option value="75000000">₦75M</option>
+                <option value="150000000">₦150M</option>
+                <option value="250000000">₦250M</option>
+                <option value="500000000">₦500M</option>
+                <option value="750000000">₦750M</option>
+                <option value="1000000000">₦1B</option>
+                <option value="2000000000">₦2B+</option>
               </select>
             </div>
             <div>
@@ -149,16 +163,6 @@ export default function SearchFilters({ filters, onFilterChange, resultCount }: 
                 <option value="pending">Under Contract</option>
                 <option value="sold">Sold</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">City</label>
-              <input
-                type="text"
-                placeholder="Enter city..."
-                value={filters.city || ''}
-                onChange={e => updateFilter('city', e.target.value)}
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
             </div>
           </div>
         )}

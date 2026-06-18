@@ -9,7 +9,9 @@ import AgentCard from './components/AgentCard';
 import Messages from './components/Messages';
 import EscrowFlow from './components/EscrowFlow';
 import Dashboard from './components/Dashboard';
-import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star } from 'lucide-react';
+import ProfilePage from './components/ProfilePage';
+import { buildConversationRouteState } from './lib/messageFlow';
+import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star, Eye, EyeOff, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Agent, Property } from './types';
 import supabase from './lib/supabase';
@@ -48,12 +50,15 @@ export default function BuyerApp() {
   const location = useLocation();
   const [properties, setProperties] = useState<Property[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({});
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('guest-user');
   const [currentUserName, setCurrentUserName] = useState<string>('Buyer');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const fetchProperties = useCallback(async (filterParams?: FilterState) => {
     setLoading(true);
@@ -86,14 +91,48 @@ export default function BuyerApp() {
   }, [filters]);
 
   const fetchAgents = useCallback(async () => {
+    setAgentsLoading(true);
+    setAgentsError(null);
     try {
       const res = await fetch('/api/agents?limit=20');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setAgents(Array.isArray(json) ? json : []);
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        console.error('Fetch agents non-ok response:', res.status, txt);
+        setAgentsError('Unable to load agents right now.');
+        setAgents([]);
+        return;
+      }
+
+      // Try parsing JSON safely
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch (parseErr) {
+        const text = await res.text().catch(() => '');
+        console.error('Fetch agents parse error, response text:', text, parseErr);
+        setAgents([]);
+        return;
+      }
+
+      // Normalize possible server shapes
+      if (Array.isArray(json)) {
+        setAgents(json);
+      } else if (json && Array.isArray(json.data)) {
+        setAgents(json.data);
+      } else if (json && typeof json === 'object') {
+        // Could be a single agent or object with agents; try to extract
+        if (json.agents && Array.isArray(json.agents)) setAgents(json.agents);
+        else if (json.items && Array.isArray(json.items)) setAgents(json.items);
+        else setAgents([]);
+      } else {
+        setAgents([]);
+      }
     } catch (err: any) {
       console.error('Fetch agents error:', err);
+      setAgentsError(err?.message || 'Unable to load agents right now.');
       setAgents([]);
+    } finally {
+      setAgentsLoading(false);
     }
   }, []);
 
@@ -111,18 +150,45 @@ export default function BuyerApp() {
     let cancelled = false;
     const loadUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (cancelled || !session?.user) return;
-
-      setCurrentUserId(session.user.id);
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('full_name, email')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
+      
       if (cancelled) return;
-      setCurrentUserName(profileData?.full_name || session.user.email?.split('@')[0] || 'Buyer');
+      
+      if (session?.user) {
+        // If the signed-in user is a realtor, redirect to the realtor portal
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profileData?.role === 'realtor') {
+          navigate('/realtor/portal', { replace: true });
+          return;
+        }
+
+        setIsAuthenticated(true);
+        setCurrentUserId(session.user.id);
+        if (!profileData) {
+          // fetch again just in case
+          const { data: pd } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          if (cancelled) return;
+          setCurrentUserName(pd?.first_name || (session.user.email ? session.user.email.split('@')[0] : 'Buyer') || 'Buyer');
+        } else {
+          if (cancelled) return;
+          setCurrentUserName(profileData?.first_name || (session.user.email ? session.user.email.split('@')[0] : 'Buyer') || 'Buyer');
+        }
+
+        // Only redirect to listings on the initial authenticated landing page.
+        if (window.location.pathname === '/') {
+          navigate('/listings', { replace: true });
+        }
+      } else {
+        setIsAuthenticated(false);
+      }
     };
 
     void loadUser();
@@ -154,25 +220,17 @@ export default function BuyerApp() {
     navigate(`/agents/${agent.id}`, { state: { agent } });
   };
 
-  const handleMessageAgent = (agentId: number, propertyName: string) => {
-    const agentName = agents.find(a => a.id === agentId)?.name || 'Agent';
-    fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sender_id: currentUserId,
-        sender_name: currentUserName,
-        receiver_id: String(agentId),
-        receiver_name: agentName,
-        property_title: propertyName,
-        content: `Hi! Thanks for your interest in "${propertyName}". I'd love to tell you more about this property and schedule a showing. When works best for you?`,
-      }),
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to send message');
-        navigate('/messages');
-      })
-      .catch(err => console.error('Message error:', err));
+  const handleOpenAgentProfile = (agentId: number) => {
+    navigate(`/agents/${agentId}`);
+  };
+
+  const handleMessageAgent = (agentId: number, propertyName: string, agentDetails?: { name?: string; avatar_url?: string | null; company?: string; email?: string }) => {
+    const agentName = agentDetails?.name || agents.find(a => a.id === agentId)?.name || 'Agent';
+    const draftMessage = `Hi ${agentName}, I’m interested in ${propertyName}. Please let me know a bit more about it and how to proceed.`;
+
+    navigate('/messages', {
+      state: buildConversationRouteState(agentId, agentName, propertyName, draftMessage),
+    });
   };
 
   const handleStartEscrow = (property: Property) => {
@@ -193,24 +251,29 @@ export default function BuyerApp() {
         if (!res.ok) throw new Error(json.error || 'Escrow failed');
         alert(`✅ Escrow Initiated!\n\nProperty: ${property.title}\nAmount: ₦${amount.toLocaleString('en-NG')}\n\nYour funds are now protected by PropTrust Escrow. Navigate to "How It Works" to see the milestone process.`);
       })
-      .catch(err => alert(`Error: ${err.message}`));
+      .catch(err => {
+        console.error('Escrow initiation error:', err);
+        alert(`Error: ${err.message || 'Failed to initiate escrow'}`);
+      });
   };
 
   const renderHome = () => (
     <>
-      <Hero onSearch={handleSearch} />
+      <Hero onSearch={handleSearch} compact={isAuthenticated} />
 
-      <section className="py-10 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-blue-50 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900">Realtor? Build your business here.</h3>
-              <p className="text-gray-500 mt-1">Create listings, manage leads, and track escrow in one portal.</p>
+      {!isAuthenticated && (
+        <section className="py-10 bg-white">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-blue-50 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Realtor? Build your business here.</h3>
+                <p className="text-gray-500 mt-1">Create listings, manage leads, and track escrow in one portal.</p>
+              </div>
+              <button onClick={() => navigate('/signup?role=realtor')} className="px-5 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition">Sign up as Realtor</button>
             </div>
-            <button onClick={() => navigate('/signup')} className="px-5 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition">Sign up as Realtor</button>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="py-16 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -254,38 +317,40 @@ export default function BuyerApp() {
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {properties.slice(0, 6).map((property, i) => (
-                <PropertyCard key={property.id} property={property} onView={handleViewProperty} index={i} />
+                <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
               ))}
             </div>
           )}
         </div>
       </section>
 
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">How PropTrust Works</h2>
-            <p className="text-gray-500 max-w-xl mx-auto">The simple, secure way to buy or sell real estate</p>
+      {!isAuthenticated && (
+        <section className="py-20 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-14">
+              <h2 className="text-3xl font-bold text-gray-900 mb-3">How PropTrust Works</h2>
+              <p className="text-gray-500 max-w-xl mx-auto">The simple, secure way to buy or sell real estate</p>
+            </div>
+            <div className="grid md:grid-cols-4 gap-8">
+              {[
+                { icon: SearchIcon, step: '01', title: 'Find Your Property', desc: 'Browse verified listings with advanced search filters.' },
+                { icon: ShieldIcon, step: '02', title: 'Secure Escrow', desc: 'Your funds are protected until all conditions are met.' },
+                { icon: BuildingIcon, step: '03', title: 'Close with Confidence', desc: 'Complete milestones with full transparency.' },
+                { icon: TrendingUp, step: '04', title: 'Move In Happy', desc: 'Receive your keys and enjoy your new property.' },
+              ].map(({ icon: Icon, step, title, desc }, i) => (
+                <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }} className="text-center">
+                  <div className="relative inline-flex">
+                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-5"><Icon className="w-7 h-7 text-blue-600" /></div>
+                    <span className="absolute -top-2 -right-2 w-7 h-7 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{step}</span>
+                  </div>
+                  <h3 className="font-bold text-gray-900 mb-2">{title}</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+                </motion.div>
+              ))}
+            </div>
           </div>
-          <div className="grid md:grid-cols-4 gap-8">
-            {[
-              { icon: SearchIcon, step: '01', title: 'Find Your Property', desc: 'Browse verified listings with advanced search filters.' },
-              { icon: ShieldIcon, step: '02', title: 'Secure Escrow', desc: 'Your funds are protected until all conditions are met.' },
-              { icon: BuildingIcon, step: '03', title: 'Close with Confidence', desc: 'Complete milestones with full transparency.' },
-              { icon: TrendingUp, step: '04', title: 'Move In Happy', desc: 'Receive your keys and enjoy your new property.' },
-            ].map(({ icon: Icon, step, title, desc }, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }} className="text-center">
-                <div className="relative inline-flex">
-                  <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-5"><Icon className="w-7 h-7 text-blue-600" /></div>
-                  <span className="absolute -top-2 -right-2 w-7 h-7 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{step}</span>
-                </div>
-                <h3 className="font-bold text-gray-900 mb-2">{title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="py-16 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -310,19 +375,22 @@ export default function BuyerApp() {
         </div>
       </section>
 
-      <section className="py-20 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <ShieldIcon className="w-14 h-14 text-blue-200 mx-auto mb-6" />
-            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Ready to Buy or Sell with Confidence?</h2>
-            <p className="text-lg text-blue-100/80 mb-8 max-w-2xl mx-auto">Join thousands who trust PropTrust for secure, transparent transactions.</p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button onClick={() => navigate('/listings')} className="px-8 py-4 bg-white text-blue-700 font-semibold rounded-xl hover:bg-blue-50 transition shadow-lg">Browse Listings</button>
-              <button onClick={() => navigate('/signup')} className="px-8 py-4 bg-white/10 text-white font-semibold rounded-xl border border-white/20 hover:bg-white/20 transition">Sign Up</button>
-            </div>
-          </motion.div>
-        </div>
-      </section>
+      {!isAuthenticated && (
+        <section className="py-20 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+              <ShieldIcon className="w-14 h-14 text-blue-200 mx-auto mb-6" />
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Ready to Buy or Sell with Confidence?</h2>
+              <p className="text-lg text-blue-100/80 mb-8 max-w-2xl mx-auto">Join thousands who trust PropTrust for secure, transparent transactions.</p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button onClick={() => navigate('/listings')} className="px-8 py-4 bg-white text-blue-700 font-semibold rounded-xl hover:bg-blue-50 transition shadow-lg">Browse Listings</button>
+                <button onClick={() => navigate('/signup?role=buyer')} className="px-8 py-4 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition shadow-lg">Sign Up as Buyer</button>
+                <button onClick={() => navigate('/signup?role=realtor')} className="px-8 py-4 bg-white/10 text-white font-semibold rounded-xl border border-white/20 hover:bg-white/20 transition">Sign Up as Realtor</button>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+      )}
     </>
   );
 
@@ -372,7 +440,12 @@ export default function BuyerApp() {
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {agents.length > 0 ? (
+        {agentsLoading ? (
+          <div className="text-center py-20">
+            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-gray-500">Loading agents...</p>
+          </div>
+        ) : agents.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {agents.map((agent, i) => (
               <AgentCard key={agent.id} agent={agent} onSelect={handleViewAgent} index={i} />
@@ -380,8 +453,9 @@ export default function BuyerApp() {
           </div>
         ) : (
           <div className="text-center py-20">
-            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-gray-500">Loading agents...</p>
+            <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-700 font-medium">{agentsError || 'No agents available right now.'}</p>
+            <button onClick={fetchAgents} className="mt-4 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition">Retry</button>
           </div>
         )}
       </div>
@@ -439,6 +513,7 @@ export default function BuyerApp() {
         onBack={() => navigate('/listings')}
         onMessageAgent={handleMessageAgent}
         onStartEscrow={handleStartEscrow}
+        onViewAgent={handleOpenAgentProfile}
       />
     );
   };
@@ -451,18 +526,70 @@ export default function BuyerApp() {
 
     useEffect(() => {
       if (agent || !params.id) return;
+
+      const normalizeFromProfile = (p: any): Agent => ({
+        id: p.id,
+        name: p.first_name || p.full_name || ((p.email || '').split('@')[0] || 'Agent'),
+        email: p.email || '',
+        phone: p.phone || '',
+        bio: p.bio || '',
+        company: p.company || '',
+        license: p.license || '',
+        rating: 5,
+        reviews_count: 0,
+        avatar_url: p.avatar_url || null,
+        properties: Array.isArray(p.properties) ? p.properties : [],
+      });
+
       const fetchAgent = async () => {
+        setLoadingDetail(true);
         try {
+          // First try canonical agents API
           const res = await fetch(`/api/agents?id=${params.id}`);
-          const json = await res.json();
-          setAgent(json || null);
+          if (res.ok) {
+            const json = await res.json();
+            // If API returned an array (unlikely for id), pick first
+            const candidate = Array.isArray(json) ? json[0] : json;
+            if (candidate && candidate.id) {
+              setAgent(candidate as Agent);
+              return;
+            }
+          }
+
+          // Fallback: try profiles table directly
+          const { data: profileData, error: profileErr } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', params.id)
+            .maybeSingle();
+
+          if (profileErr) {
+            console.error('Profile lookup error:', profileErr);
+          }
+
+          if (profileData) {
+            setAgent(normalizeFromProfile(profileData));
+            return;
+          }
+
+          // As a last resort, try fetching agents list and match by id/email
+          const { data: agentsList } = await supabase.from('agents').select('*').limit(100);
+          if (agentsList && agentsList.length > 0) {
+            const found = agentsList.find((a: any) => String(a.id) === String(params.id) || (a.email && a.email.toLowerCase() === String(params.id).toLowerCase()));
+            if (found) {
+              setAgent(found as Agent);
+              return;
+            }
+          }
+
         } catch (err) {
           console.error('Fetch agent error:', err);
         } finally {
           setLoadingDetail(false);
         }
       };
-      fetchAgent();
+
+      void fetchAgent();
     }, [agent, params.id]);
 
     if (loadingDetail) {
@@ -550,11 +677,12 @@ export default function BuyerApp() {
           <Route index element={renderHome()} />
           <Route path="listings" element={renderListings()} />
           <Route path="agents" element={renderAgents()} />
-          <Route path="messages" element={<RequireAuth><Messages onBack={() => navigate('/')} /></RequireAuth>} />
+          <Route path="messages" element={<RequireAuth><Messages onBack={() => navigate('/listings')} /></RequireAuth>} />
           <Route path="escrow" element={<EscrowFlow />} />
           <Route path="dashboard" element={<Dashboard onNavigate={(page) => navigate(pageToPath(page))} />} />
-          <Route path="signin" element={<SignupChoice mode="signin" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/')} />} />
-          <Route path="signup" element={<SignupChoice mode="signup" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/')} />} />
+          <Route path="profile" element={<RequireAuth><ProfilePage onBack={() => navigate(-1)} /></RequireAuth>} />
+          <Route path="signin" element={<SignupChoice mode="signin" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/listings')} />} />
+          <Route path="signup" element={<SignupChoice mode="signup" onRealtor={() => navigate('/realtor/portal')} onBuyer={() => navigate('/listings')} />} />
           <Route path="signup-success" element={<SignupSuccess />} />
           <Route path="properties/:id" element={<PropertyDetailRoute />} />
           <Route path="agents/:id" element={<AgentProfileRoute />} />
@@ -600,27 +728,122 @@ interface SignupChoiceProps {
 
 function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const roleFromUrl = searchParams.get('role') as 'buyer' | 'realtor' | null;
+  
   const title = mode === 'signup' ? 'Create your account' : 'Welcome back';
   const subtitle = mode === 'signup'
     ? 'Choose how you want to use PropTrust.'
     : 'Sign in to the experience that fits you.';
-  const [role, setRole] = useState<'buyer' | 'realtor'>('buyer');
-  const [form, setForm] = useState({ name: '', email: '', password: '', company: '', license: '' });
+  const [role, setRole] = useState<'buyer' | 'realtor'>(roleFromUrl || 'buyer');
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', company: '', license: '' });
   const [submitting, setSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (mode !== 'signup') return;
+    const roleFromUrl = new URLSearchParams(location.search).get('role') as 'buyer' | 'realtor' | null;
+    if (roleFromUrl === 'buyer' || roleFromUrl === 'realtor') {
+      setRole(roleFromUrl);
+    }
+  }, [location.search, mode]);
+
+  // Handle email confirmation code exchange on mount (when user clicks email link)
+  useEffect(() => {
+    const exchangeConfirmationCode = async () => {
+      try {
+        // Check for code in URL hash (from Supabase email confirmation link)
+        const hash = new URLSearchParams(location.hash.substring(1));
+        const code = hash.get('code');
+        
+        if (code && mode === 'signin') {
+          // Exchange code for session to complete email verification
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            setAuthError(`Email verification failed: ${error.message}`);
+            return;
+          }
+          if (data.session?.user?.id) {
+            setAuthNotice('Email confirmed! You are now signed in.');
+            // Get user role and navigate appropriately
+            const userRole = (data.session.user?.user_metadata?.role as 'buyer' | 'realtor' | undefined) || 'buyer';
+            await upsertProfile(data.session.user.id, data.session.user.email || null, userRole);
+            setTimeout(() => {
+              if (userRole === 'realtor') {
+                onRealtor();
+              } else {
+                onBuyer();
+              }
+            }, 500);
+          }
+        }
+      } catch (err: any) {
+        console.error('Code exchange failed:', err);
+      }
+    };
+    
+    exchangeConfirmationCode();
+  }, [mode, location.hash]);
 
   const upsertProfile = async (userId: string, email: string | null, roleValue: 'buyer' | 'realtor') => {
-    const { error } = await supabase.from('profiles').upsert({
+    // Upsert profile with full columns, then retry with minimal if column errors occur
+    const fullPayload = {
       id: userId,
       email,
-      full_name: form.name || null,
+      full_name: (form.firstName || form.lastName) ? `${(form.firstName||'').trim()} ${(form.lastName||'').trim()}`.trim() : null,
+      first_name: form.firstName || null,
+      last_name: form.lastName || null,
       role: roleValue,
       company: roleValue === 'realtor' ? form.company : null,
       license: roleValue === 'realtor' ? form.license : null,
       updated_at: new Date().toISOString(),
-    });
-    if (error) throw error;
+    };
+
+    const minimalPayload = {
+      id: userId,
+      email,
+      role: roleValue,
+      updated_at: new Date().toISOString(),
+    };
+
+    let result = await supabase.from('profiles').upsert(fullPayload);
+    
+    if (result.error && /column|schema cache/i.test(result.error.message || '')) {
+      result = await supabase.from('profiles').upsert(minimalPayload);
+    }
+
+    if (result.error) throw result.error;
+
+    // If realtor, also create an agent record so they appear in the agents list (non-critical during signin)
+    if (roleValue === 'realtor' && email) {
+      try {
+        const resp = await fetch('/api/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: (form.firstName || form.lastName) ? `${(form.firstName||'').trim()} ${(form.lastName||'').trim()}`.trim() : 'New Realtor',
+            email,
+            phone: '',
+            bio: 'Realtor on PropConnect',
+            company: form.company || '',
+            license: form.license || '',
+            rating: 5,
+            reviews_count: 0,
+          }),
+        });
+        const agentResult = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          // Log but don't fail - agent record is not critical, especially during signin
+          console.warn('Agent creation/fetch warning:', agentResult.error || 'Failed to create or fetch agent');
+        }
+      } catch (e) {
+        // Soft error - log but don't throw
+        console.warn('Agent creation/fetch error:', e);
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -631,28 +854,33 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
 
     try {
       if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({
+        const response = await fetch('/api/createAccount', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: form.email,
+            password: form.password,
+            role,
+            firstName: form.firstName || null,
+            lastName: form.lastName || null,
+            company: role === 'realtor' ? form.company : null,
+            license: role === 'realtor' ? form.license : null,
+          }),
+        });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to create account');
+
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: form.email,
           password: form.password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/signin`,
-            data: {
-              role,
-              name: form.name,
-              company: role === 'realtor' ? form.company : null,
-              license: role === 'realtor' ? form.license : null,
-            },
-          },
         });
 
         if (error) throw error;
-        if (!data.session) {
-          setAuthNotice('Check your email to confirm your account before signing in.');
-          navigate('/signup-success', { replace: true });
-          return;
-        }
 
-        await upsertProfile(data.session.user.id, data.session.user.email || null, role);
+        if (data.user?.id) {
+          await upsertProfile(data.user.id, data.user.email || null, role);
+        }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: form.email,
@@ -718,14 +946,26 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
 
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
             {mode === 'signup' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
-                <input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Your name"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First name</label>
+                  <input
+                    value={form.firstName}
+                    onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="First name"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last name</label>
+                  <input
+                    value={form.lastName}
+                    onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Last name"
+                  />
+                </div>
               </div>
             )}
             <div>
@@ -741,14 +981,23 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="••••••••"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
 
             {role === 'realtor' && mode === 'signup' && (
@@ -781,6 +1030,23 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
             >
               {submitting ? 'Please wait...' : mode === 'signup' ? 'Create account' : 'Sign in'}
             </button>
+            <p className="text-sm text-gray-500 text-center">
+              {mode === 'signup' ? (
+                <>
+                  Already have an account?{' '}
+                  <button type="button" onClick={() => navigate('/signin')} className="font-semibold text-blue-600 hover:text-blue-700">
+                    Sign in
+                  </button>
+                </>
+              ) : (
+                <>
+                  Don't have an account?{' '}
+                  <button type="button" onClick={() => navigate('/signup')} className="font-semibold text-blue-600 hover:text-blue-700">
+                    Sign up
+                  </button>
+                </>
+              )}
+            </p>
             {authError && <p className="text-sm text-red-600">{authError}</p>}
             {authNotice && <p className="text-sm text-emerald-600">{authNotice}</p>}
           </form>
@@ -793,10 +1059,13 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
 function SignupSuccess() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
-      <div className="max-w-lg w-full bg-white rounded-2xl border border-gray-200 p-8 shadow-sm text-center">
-        <h1 className="text-2xl font-bold text-gray-900">Confirm your email</h1>
-        <p className="text-gray-500 mt-3">We just sent you a confirmation link. Open it to activate your account, then come back and sign in.</p>
-        <div className="mt-6">
+      <div className="max-w-lg w-full bg-white rounded-2xl border border-gray-200 p-8 shadow-sm text-center space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Your account is ready</h1>
+          <p className="text-gray-500 mt-3">You can sign in right away with your email and password.</p>
+        </div>
+
+        <div className="pt-4 border-t border-gray-100">
           <a href="/signin" className="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition">Go to Sign In</a>
         </div>
       </div>

@@ -22,11 +22,12 @@ function safeJsonParse(val: any, fallback: any): any {
 interface PropertyDetailProps {
   property: PropertyType;
   onBack: () => void;
-  onMessageAgent: (agentId: number, propertyName: string) => void;
+  onMessageAgent: (agentId: number, propertyName: string, agent?: { name?: string; avatar_url?: string | null; company?: string; email?: string }) => void;
   onStartEscrow: (property: PropertyType) => void;
+  onViewAgent?: (agentId: number) => void;
 }
 
-export default function PropertyDetail({ property, onBack, onMessageAgent, onStartEscrow }: PropertyDetailProps) {
+export default function PropertyDetail({ property, onBack, onMessageAgent, onStartEscrow, onViewAgent }: PropertyDetailProps) {
   const [activeImage, setActiveImage] = useState(0);
   
   const price = safeNum(property.price, 0);
@@ -116,7 +117,7 @@ export default function PropertyDetail({ property, onBack, onMessageAgent, onSta
 
               <div className="mt-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">Description</h3>
-                <p className="text-gray-600 leading-relaxed">{property.description || 'No description available.'}</p>
+                <div className="text-gray-600 leading-relaxed whitespace-pre-wrap">{property.description || 'No description available.'}</div>
               </div>
 
               {features.length > 0 && (
@@ -151,7 +152,7 @@ export default function PropertyDetail({ property, onBack, onMessageAgent, onSta
                   </button>
                 )}
                 <button
-                  onClick={() => property.agents && onMessageAgent(property.agents.id, property.title)}
+                  onClick={() => property.agents && onMessageAgent(property.agents.id, property.title, property.agents)}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-white text-blue-600 font-semibold rounded-xl border-2 border-blue-200 hover:bg-blue-50 transition"
                 >
                   <MessageSquare className="w-5 h-5" />
@@ -171,11 +172,25 @@ export default function PropertyDetail({ property, onBack, onMessageAgent, onSta
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Listed by</h3>
                 <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xl font-bold shrink-0">
-                    {(property.agents.name || '?').split(' ').map((n: string) => n[0]).join('')}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => property.agents && onViewAgent && onViewAgent(property.agents.id)}
+                    className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xl font-bold shrink-0 overflow-hidden"
+                  >
+                    {property.agents.avatar_url ? (
+                      <img src={property.agents.avatar_url} alt={property.agents.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{(property.agents.name || '?').split(' ').map((n: string) => n[0]).join('')}</span>
+                    )}
+                  </button>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-gray-900">{property.agents.name}</h4>
+                    <button
+                      type="button"
+                      onClick={() => property.agents && onViewAgent && onViewAgent(property.agents.id)}
+                      className="text-left hover:text-blue-600 transition"
+                    >
+                      <h4 className="font-semibold text-gray-900">{property.agents.name}</h4>
+                    </button>
                     <p className="text-sm text-gray-500">{property.agents.company}</p>
                     <div className="flex items-center gap-1 mt-1">
                       <span className="text-amber-400">★</span>

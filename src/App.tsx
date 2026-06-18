@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import BuyerApp from './BuyerApp';
 import RealtorPortal from './components/RealtorPortal';
-import RealtorLanding from './RealtorLanding';
 import supabase from './lib/supabase';
 
 function RealtorShell() {
@@ -40,15 +39,47 @@ function RealtorShell() {
     );
   }
 
-  return <RealtorPortal onBack={() => navigate('/')} />;
+  return <RealtorPortal />;
+}
+function HomeRouter() {
+  const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
+      const role = data?.session?.user?.user_metadata?.role || null;
+      if (role === 'realtor') {
+        navigate('/realtor/portal', { replace: true });
+        return;
+      }
+      setChecking(false);
+    };
+    void check();
+    return () => { cancelled = true; };
+  }, [navigate]);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-blue-100/80">Checking your session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <BuyerApp />;
 }
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/realtor" element={<RealtorLanding />} />
       <Route path="/realtor/portal" element={<RealtorShell />} />
-      <Route path="/*" element={<BuyerApp />} />
+      <Route path="/*" element={<HomeRouter />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

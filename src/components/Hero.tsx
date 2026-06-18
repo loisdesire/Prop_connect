@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 
 interface HeroProps {
   onSearch: (filters: SearchFilters) => void;
+  compact?: boolean;
 }
 
 export interface SearchFilters {
@@ -16,7 +17,7 @@ export interface SearchFilters {
   bathrooms?: number;
 }
 
-export default function Hero({ onSearch }: HeroProps) {
+export default function Hero({ onSearch, compact = false }: HeroProps) {
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   
@@ -30,18 +31,24 @@ export default function Hero({ onSearch }: HeroProps) {
         <div className="absolute top-0 left-0 w-full h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDM0djZoLTJ2LTZoMnptMC0xNHY2aC0ydi02aDJ6TTYgMzR2NmgtMnYtNmgyem0wLTEwdjJINHYtMmgyeiIvPjwvZz48L2c+PC9zdmc+')]" />
       </div>
       
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-500/20 backdrop-blur-sm rounded-full text-blue-200 text-sm font-medium mb-6">
-            <Shield className="w-4 h-4" />
-            Secure Escrow Transactions
-          </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white tracking-tight mb-4">
-            Find Your Dream Home
-            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-cyan-300">With Confidence</span>
+      <div className={`relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${compact ? 'py-12 lg:py-16' : 'py-20 lg:py-28'}`}>
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className={`text-center ${compact ? 'mb-8' : 'mb-10'}`}>
+          {!compact && (
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-500/20 backdrop-blur-sm rounded-full text-blue-200 text-sm font-medium mb-6">
+              <Shield className="w-4 h-4" />
+              Secure Escrow Transactions
+            </div>
+          )}
+          <h1 className={`${compact ? 'text-3xl sm:text-4xl lg:text-5xl' : 'text-4xl sm:text-5xl lg:text-6xl'} font-bold text-white tracking-tight mb-4`}>
+            {compact ? 'Browse listings and keep moving' : 'Find Your Dream Home'}
+            <span className={`block text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-cyan-300 ${compact ? 'text-2xl sm:text-3xl lg:text-4xl' : ''}`}>
+              {compact ? 'without the noise' : 'With Confidence'}
+            </span>
           </h1>
-          <p className="text-lg text-blue-100/80 max-w-2xl mx-auto">
-            Browse verified listings from trusted agents. Every transaction protected by our secure escrow system.
+          <p className={`${compact ? 'text-base' : 'text-lg'} text-blue-100/80 max-w-2xl mx-auto`}>
+            {compact
+              ? 'Jump back into the marketplace, check your messages, or continue where you left off.'
+              : 'Browse verified listings from trusted agents. Every transaction protected by our secure escrow system.'}
           </p>
         </motion.div>
         
@@ -97,19 +104,21 @@ export default function Hero({ onSearch }: HeroProps) {
           </div>
         </motion.div>
         
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
-          {[
-            { value: '480+', label: 'Active Listings' },
-            { value: '120+', label: 'Verified Agents' },
-            { value: '₦18.4B', label: 'In Escrow' },
-            { value: '99.2%', label: 'Success Rate' },
-          ].map((stat, i) => (
-            <div key={i} className="text-center">
-              <div className="text-2xl font-bold text-white">{stat.value}</div>
-              <div className="text-sm text-blue-200/70 mt-1">{stat.label}</div>
-            </div>
-          ))}
-        </motion.div>
+        {!compact && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
+            {[
+              { value: '480+', label: 'Active Listings' },
+              { value: '120+', label: 'Verified Agents' },
+              { value: '₦18.4B', label: 'In Escrow' },
+              { value: '99.2%', label: 'Success Rate' },
+            ].map((stat, i) => (
+              <div key={i} className="text-center">
+                <div className="text-2xl font-bold text-white">{stat.value}</div>
+                <div className="text-sm text-blue-200/70 mt-1">{stat.label}</div>
+              </div>
+            ))}
+          </motion.div>
+        )}
       </div>
     </section>
   );

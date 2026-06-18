@@ -67,6 +67,11 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   full_name text,
+  first_name text,
+  last_name text,
+  avatar_url text,
+  bio text,
+  phone text,
   role text check (role in ('buyer', 'realtor')) default 'buyer',
   company text,
   license text,
@@ -149,3 +154,19 @@ values
   ('buyer-emeka','Emeka Nwosu','agent-tunde','Tunde Adeyemi', 2, 'Modern Apartment in Central Abuja', 'Could you confirm if the maintenance fee is monthly or annual?'),
   ('agent-tunde','Tunde Adeyemi','buyer-emeka','Emeka Nwosu', 2, 'Modern Apartment in Central Abuja', 'Maintenance fee is monthly and covers security and common area upkeep.')
 on conflict do nothing;
+
+-- Ensure all profile columns exist (idempotent schema sync)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS first_name text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_name text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bio text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS license text;
+
+-- Backfill first_name / last_name from full_name for existing profiles
+UPDATE public.profiles
+SET
+  first_name = COALESCE(first_name, split_part(COALESCE(full_name, ''), ' ', 1)),
+  last_name = COALESCE(last_name, NULLIF(regexp_replace(COALESCE(full_name, ''), '^[^ ]+\s*', ''), ''));
+

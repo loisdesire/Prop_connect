@@ -1,5 +1,63 @@
 import supabase from './_supabase.js';
 
+const buildAgentFromProfile = (profile, fallbackEmail) => {
+  const name = profile.first_name || profile.full_name || (profile.email || fallbackEmail || '').split('@')[0] || 'Realtor';
+  return {
+    name,
+    email: profile.email || fallbackEmail || '',
+    phone: profile.phone || '',
+    bio: profile.bio || 'Realtor on PropConnect',
+    company: profile.company || '',
+    license: profile.license || '',
+    rating: 5,
+    reviews_count: 0,
+  };
+};
+
+const isGenericBuyerLabel = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return !normalized || ['buyer', 'realtor', 'agent', 'someone', 'unknown', 'unknown buyer'].includes(normalized);
+};
+
+const resolveLeadName = (message, profileById) => {
+  const profile = profileById.get(String(message.sender_id));
+  const profileName = profile?.first_name || profile?.full_name || '';
+  if (profileName) return profileName;
+
+  const messageName = String(message.sender_name || '').trim();
+  if (!isGenericBuyerLabel(messageName)) return messageName;
+
+  if (profile?.email) return profile.email.split('@')[0];
+  return 'Buyer';
+};
+
+const resolveAgentForRealtor = async ({ agentId, email }) => {
+  // Try to find realtor profile by ID first
+  if (agentId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', agentId)
+      .eq('role', 'realtor')
+      .maybeSingle();
+    if (profile) return { id: profile.id, ...buildAgentFromProfile(profile) };
+  }
+
+  // Try to find realtor profile by email
+  if (email) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', email)
+      .eq('role', 'realtor')
+      .maybeSingle();
+    if (profile) return { id: profile.id, ...buildAgentFromProfile(profile) };
+  }
+
+  // Realtor not found - that's okay, return null and caller will handle
+  return null;
+};
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -7,25 +65,28 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   try {
-    // For demo, we use agent_id=1 as the logged-in realtor
-    const AGENT_ID = 1;
+    const requestedAgentId = parseInt(req.query.agent_id || '0', 10);
+    const requestedEmail = typeof req.query.email === 'string' ? req.query.email : '';
 
     if (req.method === 'GET') {
-      // Return complete realtor dashboard data in one call
-      const [propsRes, txnsRes, msgsRes, agentRes] = await Promise.all([
-        supabase.from('properties').select('*').eq('agent_id', AGENT_ID).order('created_at', { ascending: false }),
-        supabase.from('transactions').select('*, properties(*)').eq('agent_id', AGENT_ID).order('created_at', { ascending: false }),
-        supabase.from('messages').select('*').or(`receiver_id.eq.${AGENT_ID},sender_id.eq.agent-${AGENT_ID}`).order('created_at', { ascending: false }).limit(50),
-        supabase.from('agents').select('*').eq('id', AGENT_ID).single(),
-      ]);
+      try {
+        const agent = await resolveAgentForRealtor({ agentId: requestedAgentId, email: requestedEmail });
+        const AGENT_ID = agent?.id || (Number.isFinite(requestedAgentId) && requestedAgentId > 0 ? requestedAgentId : null);
+        if (!AGENT_ID) return res.status(400).json({ error: 'Unable to resolve agent' });
 
-      const properties = propsRes.data || [];
-      const transactions = txnsRes.data || [];
-      const messages = msgsRes.data || [];
-      const agent = agentRes.data;
+        // Return complete realtor dashboard data in one call
+        const [propsRes, txnsRes, msgsRes] = await Promise.all([
+          supabase.from('properties').select('*').eq('agent_id', AGENT_ID).order('created_at', { ascending: false }),
+          supabase.from('transactions').select('*, properties(*)').eq('agent_id', AGENT_ID).order('created_at', { ascending: false }),
+          supabase.from('messages').select('*').or(`receiver_id.eq.${AGENT_ID},sender_id.eq.agent-${AGENT_ID}`).order('created_at', { ascending: false }).limit(50),
+        ]);
 
-      // Compute stats
-      const activeListings = properties.filter(p => p.status === 'available').length;
+        const properties = propsRes.data || [];
+        const transactions = txnsRes.data || [];
+        const messages = msgsRes.data || [];
+
+        // Compute stats
+        const activeListings = properties.filter(p => p.status === 'available').length;
       const pendingListings = properties.filter(p => p.status === 'pending').length;
       const soldListings = properties.filter(p => p.status === 'sold').length;
       const totalValue = properties.reduce((sum, p) => sum + Number(p.price || 0), 0);
@@ -39,12 +100,32 @@ export default async function handler(req, res) {
       // Unread messages count
       const unreadMessages = messages.filter(m => !m.read && String(m.receiver_id) === String(AGENT_ID)).length;
 
+      const buyerSenderIds = [...new Set(messages
+        .map(m => String(m.sender_id || '').trim())
+        .filter(senderId => senderId && senderId !== `agent-${AGENT_ID}` && senderId !== String(AGENT_ID)))];
+
+      let profileById = new Map();
+      if (buyerSenderIds.length > 0) {
+        const { data: buyerProfiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('id', buyerSenderIds);
+        profileById = new Map((buyerProfiles || []).map(profile => [String(profile.id), profile]));
+      }
+
       // Recent leads (unique buyers who messaged)
       const leadMap = new Map();
       messages.forEach(m => {
         const senderId = m.sender_id !== `agent-${AGENT_ID}` ? m.sender_id : m.receiver_id;
         if (!leadMap.has(senderId)) {
-          leadMap.set(senderId, { name: m.sender_name || 'Unknown Buyer', property: m.property_title, lastMessage: m.content, lastDate: m.created_at, messageCount: 1 });
+          leadMap.set(senderId, {
+            id: senderId,
+            name: resolveLeadName(m, profileById),
+            property: m.property_title,
+            lastMessage: m.content,
+            lastDate: m.created_at,
+            messageCount: 1,
+          });
         } else {
           leadMap.get(senderId).messageCount++;
         }
@@ -74,7 +155,7 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({
-        agent,
+        agent: agent || { id: AGENT_ID, name: 'Realtor', email: '', phone: '', bio: '', company: '', license: '', rating: 5, reviews_count: 0 },
         stats: {
           activeListings,
           pendingListings,
@@ -96,11 +177,15 @@ export default async function handler(req, res) {
         leads,
         monthlyPerformance: monthlyData,
       });
+      } catch (getErr) {
+        console.error('[realtor.js GET] Error:', getErr);
+        return res.status(500).json({ error: getErr.message || String(getErr) });
+      }
     }
 
-    res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('Realtor API error:', err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || String(err) });
   }
 }

@@ -26,6 +26,7 @@ export interface Property {
     license: string;
     rating: number | string;
     reviews_count: number;
+    avatar_url?: string | null;
   };
 }
 
@@ -39,5 +40,6 @@ export interface Agent {
   license: string;
   rating: number | string;
   reviews_count: number;
+  avatar_url?: string | null;
   properties?: Property[];
 }

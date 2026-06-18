@@ -13,6 +13,7 @@ const safeNum = (v: any, fallback: number): number => {
 };
 
 export default function Dashboard({ onNavigate }: DashboardProps) {
+  const [firstName, setFirstName] = useState<string | null>(null);
   const [properties, setProperties] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +40,25 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       }
     };
     fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Load current user's first name for a personalized welcome
+  useEffect(() => {
+    let cancelled = false;
+    const loadName = async () => {
+      try {
+        const { data: { session } } = await (await import('../lib/supabase')).default.auth.getSession();
+        if (!session?.user?.id) return;
+        const supabase = (await import('../lib/supabase')).default;
+        const { data: profileData } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+        if (cancelled) return;
+        setFirstName(profileData?.first_name || null);
+      } catch (err) {
+        // ignore
+      }
+    };
+    void loadName();
     return () => { cancelled = true; };
   }, []);
 
@@ -71,7 +91,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-            <p className="text-gray-500 mt-1">Welcome back! Here's your real estate overview.</p>
+            <p className="text-gray-500 mt-1">Welcome back{firstName ? `, ${firstName}` : ''}! Here's your real estate overview.</p>
           </div>
           <button onClick={() => onNavigate('listings')} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25">
             <Plus className="w-5 h-5" /> New Listing

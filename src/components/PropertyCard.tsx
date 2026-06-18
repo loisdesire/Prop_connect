@@ -11,10 +11,11 @@ function safeNum(val: any, fallback: number): number {
 interface PropertyCardProps {
   property: PropertyType;
   onView: (property: PropertyType) => void;
+  onViewAgent?: (agentId: number) => void;
   index?: number;
 }
 
-export default function PropertyCard({ property, onView, index = 0 }: PropertyCardProps) {
+export default function PropertyCard({ property, onView, onViewAgent, index = 0 }: PropertyCardProps) {
   const price = safeNum(property.price, 0);
   const bedrooms = safeNum(property.bedrooms, 0);
   const bathrooms = safeNum(property.bathrooms, 0);
@@ -105,13 +106,21 @@ export default function PropertyCard({ property, onView, index = 0 }: PropertyCa
 
         {property.agents && (
           <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold">
-                {(property.agents.name || '?').charAt(0)}
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); if (property.agents && onViewAgent) onViewAgent(property.agents.id); }}
+              className="flex items-center gap-2 text-left"
+            >
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
+                {property.agents.avatar_url ? (
+                  <img src={property.agents.avatar_url} alt={property.agents.name} className="w-full h-full object-cover" />
+                ) : (
+                  (property.agents.name || '?').charAt(0)
+                )}
               </div>
-              <span className="text-sm text-gray-600 font-medium">{property.agents.name}</span>
-            </div>
-            <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" onClick={e => e.stopPropagation()}>
+              <span className="text-sm text-gray-600 font-medium hover:text-blue-600 transition">{property.agents.name}</span>
+            </button>
+            <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" onClick={e => { e.stopPropagation(); if (property.agents && onViewAgent) onViewAgent(property.agents.id); }}>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

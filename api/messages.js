@@ -8,7 +8,20 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const { sender_id, receiver_id, property_id } = req.query;
+      const { sender_id, receiver_id, property_id, user_id } = req.query;
+
+      // If a single user_id is provided, return messages where the user is either sender or receiver
+      if (user_id) {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .or(`sender_id.eq.${user_id},receiver_id.eq.${user_id}`)
+          .order('created_at', { ascending: true })
+          .limit(100);
+        if (error) throw error;
+        return res.status(200).json(data || []);
+      }
+
       let query = supabase.from('messages').select('*').order('created_at', { ascending: true });
       
       if (sender_id && receiver_id) {

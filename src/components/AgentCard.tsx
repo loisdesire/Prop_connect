@@ -21,10 +21,13 @@ export default function AgentCard({ agent, onSelect, index = 0 }: AgentCardProps
     >
       <div className="flex items-start gap-4">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xl font-bold shrink-0">
-          {agent.name.split(' ').map((n: string) => n[0]).join('')}
+          {(() => {
+            const display = (agent.name || (agent as any).first_name || (agent as any).full_name || ((agent.email || '').split('@')[0] || 'A') || 'A').trim();
+            return display.split(' ').map((n: string) => n[0]).join('').slice(0,2);
+          })()}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-900 text-lg">{agent.name}</h3>
+          <h3 className="font-semibold text-gray-900 text-lg">{agent.name || (agent as any).first_name || (agent as any).full_name || ((agent.email || '').split('@')[0] || 'Agent')}</h3>
           <p className="text-sm text-blue-600 font-medium">{agent.company}</p>
           <div className="flex items-center gap-3 mt-2">
             <div className="flex items-center gap-1">

@@ -3,16 +3,19 @@ import {
   Home, TrendingUp, DollarSign, MessageSquare, Users, Eye, Plus, Edit3, Trash2, 
   ArrowUpRight, Clock, CheckCircle, AlertCircle, Send, BarChart3, 
   Calendar, Star, Package, Target, ArrowRight, ChevronDown, ChevronUp,
-  Briefcase, Heart, Filter, LogOut, Settings, Bell, Zap
+  Briefcase, Heart, Filter, LogOut, Settings, Bell, Zap, User
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Property as PropertyType } from '../types';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../lib/supabase';
+import { buildConversationRouteState } from '../lib/messageFlow';
+import Messages from './Messages';
+import PropertyCard from './PropertyCard';
+import SearchFilters, { FilterState } from './SearchFilters';
+import ProfilePage from './ProfilePage';
 
-interface RealtorPortalProps {
-  onBack: () => void;
-}
+interface RealtorPortalProps {}
 
 interface DashboardData {
   agent: any;
@@ -33,16 +36,74 @@ const safeNum = (v: any, fallback: number): number => {
 const formatCurrency = (n: number) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(n);
 const formatDate = (d: string) => new Date(d).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' });
 
-type SubPage = 'overview' | 'listings' | 'leads' | 'transactions' | 'earnings';
+type SubPage = 'overview' | 'marketplace' | 'listings' | 'leads' | 'transactions' | 'earnings' | 'profile';
 
-export default function RealtorPortal({ onBack }: RealtorPortalProps) {
+type ListingFormState = {
+  title: string;
+  price: string;
+  bedrooms: string;
+  bathrooms: string;
+  sqft: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  type: string;
+  description: string;
+  images: string[];
+};
+
+const emptyListing: ListingFormState = {
+  title: '',
+  price: '',
+  bedrooms: '',
+  bathrooms: '',
+  sqft: '',
+  address: '',
+  city: '',
+  state: '',
+  zip: '',
+  type: 'house',
+  description: '',
+  images: [],
+};
+
+export default function RealtorPortal() {
   const navigate = useNavigate();
   const [subPage, setSubPage] = useState<SubPage>('overview');
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNewListing, setShowNewListing] = useState(false);
-  const [expandedLead, setExpandedLead] = useState<number | null>(null);
+  const [leadsExpanded, setLeadsExpanded] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [agentId, setAgentId] = useState<number | null>(null);
+  const [marketplaceProperties, setMarketplaceProperties] = useState<PropertyType[]>([]);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(false);
+  const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
+  const [marketplaceFilters, setMarketplaceFilters] = useState<FilterState>({});
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [listingMode, setListingMode] = useState<'create' | 'edit'>('create');
+  const [editingPropertyId, setEditingPropertyId] = useState<number | null>(null);
+  const [newListing, setNewListing] = useState<ListingFormState>(emptyListing);
+  const [listingError, setListingError] = useState<string | null>(null);
+  const [activeLeadThread, setActiveLeadThread] = useState<any | null>(null);
+  const [feedbackModal, setFeedbackModal] = useState<{ open: boolean; title: string; message: string; kind: 'success' | 'error' }>({
+    open: false,
+    title: '',
+    message: '',
+    kind: 'success',
+  });
+
+  const getInitials = (value: string | null | undefined) => {
+    if (!value) return '?';
+    return value
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  };
   
   useEffect(() => {
     const loadData = async () => {
@@ -50,22 +111,77 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
         // Get current user session
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          // Fetch user profile
-          const { data: profileData } = await supabase
+          const userId = session.user.id;
+          const email = session.user.email || '';
+
+          // Step 1: Fetch or create user profile (with retry logic for missing columns)
+          let profileData = null;
+          const { data: existingProfile } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', session.user.id)
-            .single();
-          
-          setCurrentUser({ ...profileData, email: session.user.email });
+            .eq('id', userId)
+            .maybeSingle();
+
+          if (!existingProfile) {
+            // Profile doesn't exist; create it with full → minimal retry pattern
+            const fullProfilePayload = {
+              id: userId,
+              email,
+              first_name: session.user.user_metadata?.first_name || (email ? email.split('@')[0] : 'Realtor') || 'Realtor',
+              last_name: session.user.user_metadata?.last_name || '',
+              full_name: session.user.user_metadata?.full_name || (email ? email.split('@')[0] : 'Realtor') || 'Realtor',
+              role: 'realtor',
+            };
+
+            let profileResult = await supabase.from('profiles').insert(fullProfilePayload).select().single();
+
+            if (profileResult.error && /column|schema cache/i.test(profileResult.error.message || '')) {
+              profileResult = await supabase
+                .from('profiles')
+                .insert({ id: userId, email, role: 'realtor' })
+                .select()
+                .single();
+            }
+
+            if (profileResult.error) {
+              console.error('Profile creation failed:', profileResult.error.message);
+              throw new Error(`Profile creation failed: ${profileResult.error.message}`);
+            }
+            profileData = profileResult.data;
+          } else {
+            profileData = existingProfile;
+          }
+
+          const profile = profileData || {};
+          const displayName = profile.full_name || session.user.user_metadata?.full_name || profile.first_name || (email ? email.split('@')[0] : 'Realtor') || 'Realtor';
+
+          setCurrentUser({ ...profile, email, first_name: profile.first_name || null, last_name: profile.last_name || null, full_name: displayName, avatar_url: profile.avatar_url || session.user.user_metadata?.avatar_url || null });
+
+          // Simply fetch the dashboard data (which includes the agent that was created during signup)
+          console.log('[RealtorPortal] Fetching realtor data for email:', email);
+          try {
+            const res = await fetch(`/api/realtor?email=${encodeURIComponent(email)}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const d = await res.json();
+            console.log('[RealtorPortal] Realtor data received:', d);
+            setData(d);
+            if (d?.agent?.id) {
+              setAgentId(d.agent.id);
+              console.log('[RealtorPortal] ✅ Agent set to:', d.agent.id);
+            } else {
+              console.warn('[RealtorPortal] ⚠️ No agent returned from realtor endpoint');
+            }
+          } catch (err) {
+            console.error('[RealtorPortal] ❌ Failed to load realtor data:', err);
+          }
+          return;
         }
-        
-        // Fetch API data
+
         const res = await fetch('/api/realtor');
         const d = await res.json();
         setData(d);
       } catch (err) {
-        console.error(err);
+        console.error('RealtorPortal initialization error:', err);
       } finally {
         setLoading(false);
       }
@@ -74,12 +190,174 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (refreshTrigger === 0) return;
+    const reloadUserProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (profileData) {
+        const profile = profileData;
+        const email = session.user.email || profile.email || '';
+        const displayName = profile.full_name || session.user.user_metadata?.full_name || (email ? email.split('@')[0] : 'Realtor') || 'Realtor';
+        setCurrentUser({ ...profile, email, first_name: profile.first_name || null, last_name: profile.last_name || null, full_name: displayName, avatar_url: profile.avatar_url || session.user.user_metadata?.avatar_url || null });
+      }
+    };
+    void reloadUserProfile();
+  }, [refreshTrigger]);
+
   const s = data?.stats || {};
   const agent = currentUser && Object.keys(currentUser).length > 0 ? currentUser : (data?.agent || {});
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate('/signin');
+    window.location.assign('/');
+  };
+
+  const fetchMarketplace = async (filters: FilterState = {}) => {
+    try {
+      setMarketplaceLoading(true);
+      setMarketplaceError(null);
+
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== '' && value !== null) {
+          params.set(key, String(value));
+        }
+      });
+
+      const res = await fetch(`/api/properties?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const dataArray = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+      setMarketplaceProperties(dataArray);
+    } catch (error: any) {
+      setMarketplaceError(error.message || 'Unable to load marketplace listings');
+      setMarketplaceProperties([]);
+    } finally {
+      setMarketplaceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (subPage === 'marketplace' && marketplaceProperties.length === 0 && !marketplaceLoading) {
+      void fetchMarketplace(marketplaceFilters);
+    }
+  }, [subPage, marketplaceFilters, marketplaceLoading, marketplaceProperties.length]);
+
+  const handleMarketplaceFilterChange = (filters: FilterState) => {
+    setMarketplaceFilters(filters);
+    void fetchMarketplace(filters);
+  };
+
+  const handleViewProperty = (property: PropertyType) => {
+    navigate(`/properties/${property.id}`, { state: { property } });
+  };
+
+  const refreshRealtorData = async () => {
+    if (!agentId) return;
+    const d = await fetch(`/api/realtor?agent_id=${agentId}`).then(r => r.json());
+    setData(d);
+  };
+
+  const openCreateListing = () => {
+    setListingMode('create');
+    setEditingPropertyId(null);
+    setNewListing(emptyListing);
+    setListingError(null);
+    setShowNewListing(true);
+  };
+
+  const openEditListing = (property: PropertyType) => {
+    setListingMode('edit');
+    setEditingPropertyId(property.id);
+    setNewListing({
+      title: String(property.title || ''),
+      price: String(property.price ?? ''),
+      bedrooms: String(property.bedrooms ?? ''),
+      bathrooms: String(property.bathrooms ?? ''),
+      sqft: String(property.sqft ?? ''),
+      address: String(property.address || ''),
+      city: String(property.city || ''),
+      state: String(property.state || ''),
+      zip: String(property.zip || ''),
+      type: String(property.type || 'house'),
+      description: String(property.description || ''),
+      images: Array.isArray(property.images) ? property.images : [],
+    });
+    setListingError(null);
+    setShowNewListing(true);
+  };
+
+  const handleDeleteListing = async (propertyId: number) => {
+    const ok = window.confirm('Delete this listing? This cannot be undone.');
+    if (!ok) return;
+
+    try {
+      const res = await fetch('/api/properties', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: propertyId }),
+      });
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(responseData.error || 'Failed to delete listing');
+      await refreshRealtorData();
+      setMarketplaceProperties([]);
+      setFeedbackModal({
+        open: true,
+        kind: 'success',
+        title: 'Listing deleted',
+        message: 'The property was removed from your dashboard.',
+      });
+    } catch (e: any) {
+      setFeedbackModal({
+        open: true,
+        kind: 'error',
+        title: 'Delete failed',
+        message: e.message || 'Unable to delete the listing.',
+      });
+    }
+  };
+
+  const handlePromoteListing = async (property: PropertyType) => {
+    try {
+      const res = await fetch('/api/properties', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: property.id, status: property.status === 'available' ? 'pending' : 'available' }),
+      });
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(responseData.error || 'Failed to update listing');
+      await refreshRealtorData();
+      setMarketplaceProperties([]);
+      setFeedbackModal({
+        open: true,
+        kind: 'success',
+        title: 'Listing updated',
+        message: `The listing is now marked as ${property.status === 'available' ? 'pending' : 'available'}.`,
+      });
+    } catch (e: any) {
+      setFeedbackModal({
+        open: true,
+        kind: 'error',
+        title: 'Update failed',
+        message: e.message || 'Unable to update the listing.',
+      });
+    }
+  };
+
+  const openLeadConversation = (lead: any, withDraft: boolean) => {
+    const replyDraft = withDraft
+      ? `Hi ${lead.name || 'there'}, thanks for reaching out. I’d be happy to help with ${lead.property || 'your inquiry'}. What would you like to know?`
+      : undefined;
+    setActiveLeadThread(buildConversationRouteState(lead.id, lead.name, lead.property, replyDraft));
+    setSubPage('leads');
   };
 
   // ─── SUB-PAGE RENDERERS ──────────────────────────────
@@ -90,12 +368,16 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl p-8 text-white">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl font-bold">
-              {(agent.name || '?').split(' ').map((n: string) => n[0]).join('')}
-            </div>
+              <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm overflow-hidden flex items-center justify-center text-3xl font-bold border border-white/20">
+                {agent.avatar_url ? (
+                  <img src={agent.avatar_url} alt={agent.first_name || agent.name || agent.full_name || 'Agent'} className="w-full h-full object-cover" />
+                ) : (
+                  <span>{getInitials(agent.first_name || agent.name || agent.full_name)}</span>
+                )}
+              </div>
             <div>
-              <h1 className="text-2xl font-bold">Welcome back, {agent.name || 'Agent'}!</h1>
-              <p className="text-blue-100 mt-1">{agent.company || ''} · Here's your business overview</p>
+              <h1 className="text-2xl font-bold">Welcome back, {currentUser?.first_name || agent?.first_name || agent?.name || agent?.full_name || 'Agent'}!</h1>
+              <p className="text-blue-100 mt-1">{currentUser?.company || agent?.company || ''} · Here's your business overview</p>
               <div className="flex items-center gap-3 mt-2">
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white/20 rounded-lg text-sm">
                   <Star className="w-4 h-4 text-amber-300" /> {agent.rating || '5.0'} rating
@@ -174,29 +456,21 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
           </div>
           <div className="divide-y divide-gray-50 max-h-[360px] overflow-y-auto">
             {(data?.leads || []).slice(0, 5).map((lead: any, idx: number) => (
-              <div key={idx} className="p-4 hover:bg-gray-50 transition cursor-pointer" onClick={() => setExpandedLead(expandedLead === idx ? null : idx)}>
+              <button key={idx} type="button" className="w-full p-4 text-left hover:bg-gray-50 transition" onClick={() => openLeadConversation(lead, false)}>
                 <div className="flex items-start gap-3">
                   <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5">
                     {(lead.name || '?')[0]}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-900">{lead.name}</p>
-                      <span className="text-xs text-gray-400">{formatDate(lead.lastDate)}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-gray-900 truncate">{lead.name}</p>
+                      <span className="text-xs text-gray-400 shrink-0">{formatDate(lead.lastDate)}</span>
                     </div>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">{lead.property ? `Interested in: ${lead.property}` : 'General inquiry'}</p>
-                    <AnimatePresence>{expandedLead === idx && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mt-2 pt-2 border-t border-gray-100">
-                        <p className="text-sm text-gray-600 italic bg-gray-50 p-2 rounded-lg">\u201C{lead.lastMessage}\u201D</p>
-                        <div className="flex gap-2 mt-2">
-                          <button className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700"><Send className="w-3 h-3 mr-1" /> Reply</button>
-                          <button className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">View Profile</button>
-                        </div>
-                      </motion.div>
-                    )}</AnimatePresence>
+                    <p className="text-xs text-gray-500 truncate mt-0.5">{lead.property || 'Property interest not specified'}</p>
+                    <p className="text-xs text-gray-500 truncate mt-1">{lead.lastMessage}</p>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
             {(data?.leads || []).length === 0 && (
               <div className="p-8 text-center text-gray-400 text-sm"><Users className="w-10 h-10 mx-auto mb-2 opacity-30" /> No leads yet</div>
@@ -236,7 +510,7 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div><h2 className="text-xl font-bold text-gray-900">My Listings</h2><p className="text-sm text-gray-500 mt-1">Manage all your property listings</p></div>
-        <button onClick={() => setShowNewListing(true)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25"><Plus className="w-5 h-5" /> Add New Listing</button>
+            <button onClick={openCreateListing} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25"><Plus className="w-5 h-5" /> Add New Listing</button>
       </div>
 
       {/* Status Tabs */}
@@ -279,9 +553,9 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
                   <td className="px-5 py-4 text-sm text-gray-500">{Math.floor(Math.random() * 15)}</td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-1">
-                      <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                      <button className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                      <button className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition" title="Promote"><Zap className="w-4 h-4" /></button>
+                      <button onClick={() => openEditListing(prop)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteListing(prop.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => handlePromoteListing(prop)} className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition" title="Promote"><Zap className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -297,41 +571,86 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
   );
 
   const renderLeads = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-bold text-gray-900">Buyer Leads</h2><p className="text-sm text-gray-500 mt-1">People interested in your properties</p></div>
-        <div className="relative"><Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input placeholder="Search leads..." className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" /></div>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Buyer Leads</h2>
+          <p className="text-sm text-gray-500 mt-1">People interested in your properties</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input placeholder="Search leads..." className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" />
+          </div>
+          <button
+            type="button"
+            onClick={() => setLeadsExpanded((current) => !current)}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+          >
+            {leadsExpanded ? 'Hide leads' : 'Show leads'}
+            {leadsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {(data?.leads || []).map((lead: any, idx: number) => (
-          <motion.div key={idx} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-bold">{(lead.name || '?')[0]}</div>
-                <div>
-                  <p className="font-semibold text-gray-900">{lead.name}</p>
-                  <p className="text-xs text-gray-400">{lead.messageCount || 1} message{(lead.messageCount || 1) !== 1 ? 's' : ''}</p>
+      <AnimatePresence initial={false}>
+        {leadsExpanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-3">
+              {(data?.leads || []).map((lead: any, idx: number) => (
+                <motion.button
+                  key={lead.id || idx}
+                  type="button"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.03 }}
+                  onClick={() => openLeadConversation(lead, false)}
+                  className={`w-full rounded-2xl border bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md ${activeLeadThread?.openConversationWith === String(lead.id) ? 'border-blue-300 ring-1 ring-blue-100' : 'border-gray-100'}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-bold shrink-0">{(lead.name || '?')[0]}</div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-gray-900 truncate">{lead.name}</p>
+                          <p className="text-sm text-gray-500 truncate">{lead.property || 'Property interest not specified'}</p>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600 truncate">{lead.lastMessage}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3 text-xs text-gray-400">
+                      <span>{formatDate(lead.lastDate)}</span>
+                      <span>{lead.messageCount || 1} msg{(lead.messageCount || 1) !== 1 ? 's' : ''}</span>
+                    </div>
+                  </div>
+                </motion.button>
+              ))}
+
+              {(data?.leads || []).length === 0 && (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center text-gray-400">
+                  <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>No leads yet. They'll appear when buyers contact you.</p>
                 </div>
-              </div>
-              <span className="text-xs text-gray-400">{formatDate(lead.lastDate)}</span>
-            </div>
-            {lead.property && (
-              <div className="mb-3 px-3 py-2 bg-blue-50 rounded-lg text-sm text-blue-700 truncate">
-                <Home className="w-3 h-3 inline mr-1" /> {lead.property}
-              </div>
-            )}
-            <p className="text-sm text-gray-500 line-clamp-2 mb-4">\u201C{lead.lastMessage}\u201D</p>
-            <div className="flex gap-2">
-              <button className="flex-1 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-1.5"><Send className="w-4 h-4" /> Reply</button>
-              <button className="py-2 px-3 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"><Eye className="w-4 h-4" /></button>
+              )}
             </div>
           </motion.div>
-        ))}
-        {(data?.leads || []).length === 0 && (
-          <div className="col-span-3 p-12 text-center text-gray-400"><Users className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>No leads yet. They'll appear when buyers contact you.</p></div>
         )}
-      </div>
+      </AnimatePresence>
+
+      {activeLeadThread && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <Messages
+            initialState={activeLeadThread}
+            threadUserId={String(agentId || data?.agent?.id || '')}
+            onBack={() => setActiveLeadThread(null)}
+          />
+        </div>
+      )}
     </div>
   );
 
@@ -469,32 +788,134 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
 
   // ─── NEW LISTING MODAL ────────────────────────────────
 
-  const [newListing, setNewListing] = useState({ title: '', price: '', bedrooms: '', bathrooms: '', sqft: '', address: '', city: '', state: '', zip: '', type: 'house', description: '' });
+  const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+
+  useEffect(() => {
+    if (!showNewListing) {
+      setNewListing(emptyListing);
+      setListingMode('create');
+      setEditingPropertyId(null);
+      setListingError(null);
+    }
+  }, [showNewListing]);
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) {
+      setNewListing(prev => ({ ...prev, images: [] }));
+      return;
+    }
+
+    try {
+      const images = await Promise.all(files.map(fileToDataUrl));
+      setNewListing(prev => ({ ...prev, images }));
+      setListingError(null);
+    } catch (error) {
+      console.error(error);
+      setListingError('Unable to read one or more images. Please try again.');
+    }
+  };
+
+  const handleImageDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer.files || []).filter(file => file.type.startsWith('image/'));
+
+    if (files.length === 0) {
+      setListingError('Please drop image files only.');
+      return;
+    }
+
+    try {
+      const images = await Promise.all(files.map(fileToDataUrl));
+      setNewListing(prev => ({ ...prev, images }));
+      setListingError(null);
+    } catch (error) {
+      console.error(error);
+      setListingError('Unable to read one or more images. Please try again.');
+    }
+  };
 
   const handleCreateListing = async () => {
-    if (!newListing.title || !newListing.price) return alert('Title and price are required');
+    console.log('[handleCreateListing] Current agentId:', agentId);
+    
+    if (!newListing.title || !newListing.price) {
+      setFeedbackModal({
+        open: true,
+        kind: 'error',
+        title: 'Missing required fields',
+        message: 'Title and price are required before you can publish a listing.',
+      });
+      return;
+    }
+
+    console.log('[handleCreateListing] Checking agentId:', agentId, 'type:', typeof agentId);
+    if (!agentId) {
+      console.error('❌ agentId is falsy:', agentId);
+      setFeedbackModal({
+        open: true,
+        kind: 'error',
+        title: 'Realtor account not ready',
+        message: 'We could not determine your realtor account. Refresh the page and try again.',
+      });
+      return;
+    }
+    console.log('✅ agentId check passed, proceeding with listing creation');
+
+    if (!newListing.images.length) {
+      setFeedbackModal({
+        open: true,
+        kind: 'error',
+        title: 'Images required',
+        message: 'Please upload at least one property image before submitting the listing.',
+      });
+      return;
+    }
+
     try {
       const res = await fetch('/api/properties', {
-        method: 'POST',
+        method: listingMode === 'edit' ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newListing, agent_id: 1, images: [], features: [] }),
+        body: JSON.stringify(listingMode === 'edit' ? { ...newListing, id: editingPropertyId, agent_id: agentId, images: newListing.images, features: [] } : { ...newListing, agent_id: agentId, images: newListing.images, features: [] }),
       });
-      if (!res.ok) throw new Error('Failed to create');
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(responseData.error || `Failed to ${listingMode === 'edit' ? 'update' : 'create'} listing`);
       setShowNewListing(false);
-      setNewListing({ title: '', price: '', bedrooms: '', bathrooms: '', sqft: '', address: '', city: '', state: '', zip: '', type: 'house', description: '' });
+      setListingError(null);
+      setNewListing(emptyListing);
+      setListingMode('create');
+      setEditingPropertyId(null);
+      setFeedbackModal({
+        open: true,
+        kind: 'success',
+        title: listingMode === 'edit' ? 'Listing updated' : 'Listing created',
+        message: listingMode === 'edit'
+          ? 'Your property changes have been saved successfully.'
+          : 'Your property has been published successfully and is now visible in your dashboard.',
+      });
       // Refresh data
-      const d = await fetch('/api/realtor').then(r => r.json());
-      setData(d);
+      await refreshRealtorData();
+      setMarketplaceProperties([]);
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      setFeedbackModal({
+        open: true,
+        kind: 'error',
+        title: listingMode === 'edit' ? 'Update failed' : 'Listing failed',
+        message: e.message || 'Something went wrong while saving the listing.',
+      });
     }
   };
 
   // ─── MAIN RENDER ───────────────────────────────────────
 
   const navItems: { id: SubPage; label: string; icon: any }[] = [
-    { id: 'overview', label: 'Overview', icon: TrendingUp },
-    { id: 'listings', label: 'Listings', icon: Package },
+    { id: 'overview', label: 'Home', icon: TrendingUp },
+    { id: 'marketplace', label: 'Marketplace', icon: Home },
+    { id: 'listings', label: 'My Listings', icon: Package },
     { id: 'leads', label: 'Leads', icon: Users },
     { id: 'transactions', label: 'Deals', icon: Target },
     { id: 'earnings', label: 'Earnings', icon: DollarSign },
@@ -514,16 +935,12 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
       <div className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <button onClick={onBack} className="flex items-center gap-2 text-gray-500 hover:text-blue-600 transition text-sm font-medium">
-                ← Back to Marketplace
-              </button>
-              <div className="hidden sm:block w-px h-6 bg-gray-200" />
+            <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
                   <Briefcase className="w-4 h-4 text-white" />
                 </div>
-                <span className="font-bold text-gray-900 hidden sm:block">Realtor Portal</span>
+                <span className="font-bold text-gray-900 hidden sm:block">Realtor Workspace</span>
               </div>
             </div>
             
@@ -543,9 +960,13 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
               <button onClick={handleSignOut} className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition">
                 <LogOut className="w-4 h-4" /> Sign Out
               </button>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white text-sm font-bold cursor-pointer">
-                {(agent.name || '?').split(' ').map((n: string) => n[0]).join('')}
-              </div>
+              <button onClick={() => setSubPage('profile')} className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white text-sm font-bold cursor-pointer hover:ring-2 hover:ring-blue-300 transition overflow-hidden">
+                {currentUser?.avatar_url ? (
+                  <img src={currentUser.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <span>{(currentUser?.first_name || agent.name || '?')[0].toUpperCase()}</span>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -565,13 +986,63 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
       </div>
 
       {/* Content Area */}
+      {subPage === 'profile' ? (
+        <ProfilePage onBack={() => setSubPage('overview')} onSaveSuccess={() => setRefreshTrigger(prev => prev + 1)} />
+      ) : (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {subPage === 'overview' && renderOverview()}
+        {subPage === 'marketplace' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Marketplace</h2>
+              <p className="text-sm text-gray-500 mt-1">Browse public listings like a buyer would, without leaving the realtor workspace.</p>
+            </div>
+
+            <SearchFilters
+              filters={marketplaceFilters}
+              onFilterChange={handleMarketplaceFilterChange}
+              resultCount={marketplaceProperties.length}
+            />
+
+            {marketplaceLoading ? (
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 animate-pulse">
+                    <div className="h-52 bg-gray-200" />
+                    <div className="p-5 space-y-3">
+                      <div className="h-5 bg-gray-200 rounded w-3/4" />
+                      <div className="h-4 bg-gray-200 rounded w-1/2" />
+                      <div className="h-8 bg-gray-100 rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : marketplaceError ? (
+              <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
+                <p className="text-red-600 font-medium">{marketplaceError}</p>
+                <button onClick={() => void fetchMarketplace(marketplaceFilters)} className="mt-4 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition">
+                  Try Again
+                </button>
+              </div>
+            ) : marketplaceProperties.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-500">
+                No marketplace listings found.
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {marketplaceProperties.map((property, index) => (
+                  <PropertyCard key={property.id} property={property} onView={handleViewProperty} index={index} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {subPage === 'listings' && renderListings()}
         {subPage === 'leads' && renderLeads()}
         {subPage === 'transactions' && renderTransactions()}
         {subPage === 'earnings' && renderEarnings()}
       </div>
+      )}
 
       {/* New Listing Modal */}
       <AnimatePresence>
@@ -579,7 +1050,7 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowNewListing(false)}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">Create New Listing</h2>
+                <h2 className="text-xl font-bold text-gray-900">{listingMode === 'edit' ? 'Edit Listing' : 'Create New Listing'}</h2>
                 <button onClick={() => setShowNewListing(false)} className="p-2 hover:bg-gray-100 rounded-lg transition"><Trash2 className="w-5 h-5 text-gray-400" /></button>
               </div>
               <div className="p-6 space-y-4">
@@ -595,11 +1066,88 @@ export default function RealtorPortal({ onBack }: RealtorPortalProps) {
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">State</label><input value={newListing.state} onChange={e => setNewListing({...newListing, state: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Lagos" /></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label><input value={newListing.zip} onChange={e => setNewListing({...newListing, zip: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="100001" /></div>
                   <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Description</label><textarea value={newListing.description} onChange={e => setNewListing({...newListing, description: e.target.value})} rows={3} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Describe this property..." /></div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Property Images * <span className="text-gray-400 font-normal">(required)</span></label>
+                    <div
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={handleImageDrop}
+                      className="rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-5 text-center transition hover:border-blue-400 hover:bg-blue-50"
+                    >
+                      <input
+                        id="listing-images"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageUpload}
+                        className="sr-only"
+                      />
+                      <label htmlFor="listing-images" className="cursor-pointer block">
+                        <p className="text-sm font-semibold text-blue-700">Drag and drop images here</p>
+                        <p className="text-xs text-gray-500 mt-1">or click to browse and select multiple photos</p>
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Upload at least one image. You can select multiple photos.</p>
+                    {listingError && <p className="text-sm text-red-600 mt-2">{listingError}</p>}
+                    {newListing.images.length > 0 && (
+                      <div className="mt-3 grid grid-cols-4 gap-3">
+                        {newListing.images.map((src, idx) => (
+                          <div key={idx} className="aspect-[4/3] rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                            <img src={src} alt={`Selected listing preview ${idx + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
                 <button onClick={() => setShowNewListing(false)} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition">Cancel</button>
-                <button onClick={handleCreateListing} className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25">Create Listing</button>
+                <button onClick={handleCreateListing} className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25">{listingMode === 'edit' ? 'Save Changes' : 'Create Listing'}</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Feedback Modal */}
+      <AnimatePresence>
+        {feedbackModal.open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setFeedbackModal(prev => ({ ...prev, open: false }))}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 12 }}
+              className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={`px-6 py-5 ${feedbackModal.kind === 'success' ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className={`text-lg font-bold ${feedbackModal.kind === 'success' ? 'text-emerald-900' : 'text-red-900'}`}>{feedbackModal.title}</h3>
+                    <p className={`mt-1 text-sm ${feedbackModal.kind === 'success' ? 'text-emerald-700' : 'text-red-700'}`}>{feedbackModal.message}</p>
+                  </div>
+                  <button
+                    onClick={() => setFeedbackModal(prev => ({ ...prev, open: false }))}
+                    className={`p-2 rounded-full transition ${feedbackModal.kind === 'success' ? 'hover:bg-emerald-100' : 'hover:bg-red-100'}`}
+                    aria-label="Close message"
+                  >
+                    <Trash2 className={`w-5 h-5 ${feedbackModal.kind === 'success' ? 'text-emerald-700' : 'text-red-700'}`} />
+                  </button>
+                </div>
+              </div>
+              <div className="p-6 flex justify-end">
+                <button
+                  onClick={() => setFeedbackModal(prev => ({ ...prev, open: false }))}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition ${feedbackModal.kind === 'success' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                >
+                  OK
+                </button>
               </div>
             </motion.div>
           </motion.div>

@@ -30,16 +30,35 @@ export default async function handler(req, res) {
       
       if (error) throw error;
       
-      // Fetch agents separately and attach to properties
+      // Fetch agent profiles for enrichment
       const agentIds = [...new Set((data || []).map(p => p.agent_id).filter(Boolean))];
       let agentMap = {};
+      
       if (agentIds.length > 0) {
-        const { data: agentsData } = await supabase
-          .from('agents')
+        const { data: profilesData } = await supabase
+          .from('profiles')
           .select('*')
-          .in('id', agentIds);
-        if (agentsData) {
-          agentMap = Object.fromEntries(agentsData.map(a => [a.id, a]));
+          .in('id', agentIds)
+          .eq('role', 'realtor');
+        
+        if (profilesData) {
+          agentMap = Object.fromEntries(
+            profilesData.map(p => {
+              const displayName = p.first_name || p.full_name || ((p.email || '').split('@')[0] || 'Agent') || 'Agent';
+              return [p.id, {
+                id: p.id,
+                name: displayName,
+                email: p.email || '',
+                phone: p.phone || '',
+                bio: p.bio || '',
+                company: p.company || '',
+                license: p.license || '',
+                rating: 5,
+                reviews_count: 0,
+                avatar_url: p.avatar_url || null,
+              }];
+            })
+          );
         }
       }
       
@@ -54,6 +73,18 @@ export default async function handler(req, res) {
     
     if (req.method === 'POST') {
       const { agent_id, title, description, price, bedrooms, bathrooms, sqft, address, city, state, zip, lat, lng, type, images, features } = req.body;
+
+      if (!agent_id) {
+        return res.status(400).json({ error: 'agent_id is required' });
+      }
+
+      if (!title || !price) {
+        return res.status(400).json({ error: 'title and price are required' });
+      }
+
+      if (!Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ error: 'At least one property image is required' });
+      }
       
       const { data, error } = await supabase
         .from('properties')
