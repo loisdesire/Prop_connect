@@ -279,16 +279,15 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
 
     const selectedMessages = conversations.get(conversationId) || [];
     const lastMsg = selectedMessages[selectedMessages.length - 1];
-    
-    // Determine receiver ID based on message direction
-    const receiverId = lastMsg
-      ? (lastMsg.sender_id === currentUserId ? lastMsg.receiver_id : lastMsg.sender_id)
-      : conversationId;
-    
-    // Use profile name for receiver, fallback to pending conversation name
-    const receiverName = getProfileName(receiverId, pendingConversationName || 'Agent');
-    
+
     const senderId = currentUserRole === 'realtor' && threadUserId ? `agent-${threadUserId}` : currentUserId;
+
+    // Determine receiver: whichever party in the last message is NOT the current sender
+    const receiverId = lastMsg
+      ? (lastMsg.sender_id === senderId ? lastMsg.receiver_id : lastMsg.sender_id)
+      : conversationId;
+
+    const receiverName = getProfileName(receiverId, pendingConversationName || 'Agent');
 
     try {
       const res = await fetch('/api/messages', {

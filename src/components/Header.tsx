@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Home, Search, MessageSquare, Shield, User, Menu, X, Building2, ChevronDown } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Home, Search, MessageSquare, Shield, User, Menu, X, Building2, ChevronDown, LogOut, Settings } from 'lucide-react';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import supabase from '../lib/supabase';
 import { serviceTitleToSlug } from './Services';
@@ -17,9 +17,12 @@ const isActivePath = (currentPath: string, target: string): boolean => {
 export default function Header({ currentPath, onNavigate }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [sessionRole, setSessionRole] = useState<'buyer' | 'realtor' | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   const services = [
     'Building Construction',
@@ -45,10 +48,8 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
     const loadSession = async () => {
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
-      // Prefer role from profiles table as source of truth; fall back to user_metadata only if no profile exists
       const roleMeta = (data.session?.user?.user_metadata?.role as 'buyer' | 'realtor' | undefined) || null;
 
-      // Fetch user's full name and role from profiles table
       if (data.session?.user?.id) {
         const { data: profileData } = await supabase
           .from('profiles')
@@ -58,8 +59,8 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
 
         if (!cancelled) {
           setUserName(profileData?.first_name || profileData?.full_name || (profileData?.email ? profileData.email.split('@')[0] : null) || null);
+          setUserEmail(profileData?.email || data.session.user.email || null);
           setUserAvatar(profileData?.avatar_url || data.session.user.user_metadata?.avatar_url || null);
-          // Use profile role when a profile exists; otherwise use metadata role
           setSessionRole(profileData ? (profileData.role as 'buyer' | 'realtor' | null) : roleMeta);
         }
       } else {
@@ -70,7 +71,6 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
       const { data: sub } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       void event;
       const roleFromMeta = (session?.user?.user_metadata?.role as 'buyer' | 'realtor' | undefined) || null;
-      // Fetch user's full name and prefer profile role when available
       if (session?.user?.id) {
         supabase
           .from('profiles')
@@ -80,6 +80,7 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
           .then(({ data: profileData }) => {
             if (profileData) {
               setUserName(profileData.first_name || profileData.full_name || profileData.email?.split('@')[0] || null);
+              setUserEmail(profileData.email || session.user.email || null);
               setUserAvatar(profileData.avatar_url || session.user.user_metadata?.avatar_url || null);
               setSessionRole((profileData.role as 'buyer' | 'realtor' | undefined) || roleFromMeta);
             } else {
@@ -97,6 +98,16 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    if (profileOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [profileOpen]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -191,19 +202,66 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
                     Portal
                   </button>
                 )}
-                <button
-                  onClick={() => onNavigate('/profile')}
-                  className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white text-sm font-bold cursor-pointer hover:ring-2 hover:ring-blue-300 transition"
-                >
-                  {userAvatar ? (
-                    <img src={userAvatar} alt={userName || 'Profile'} className="w-full h-full object-cover" />
-                  ) : (
-                    initials(userName)
+                <div className="relative" ref={profileRef}>
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white text-sm font-bold cursor-pointer hover:ring-2 hover:ring-blue-300 transition"
+                  >
+                    {userAvatar ? (
+                      <img src={userAvatar} alt={userName || 'Profile'} className="w-full h-full object-cover" />
+                    ) : (
+                      initials(userName)
+                    )}
+                  </button>
+
+                  {profileOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+                      <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-b border-gray-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-bold shrink-0">
+                            {userAvatar ? (
+                              <img src={userAvatar} alt={userName || ''} className="w-full h-full object-cover" />
+                            ) : (
+                              initials(userName)
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900 truncate">{userName || 'User'}</p>
+                            <p className="text-xs text-gray-500 truncate">{userEmail || ''}</p>
+                            <span className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full ${sessionRole === 'realtor' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {sessionRole === 'realtor' ? 'Realtor' : 'Buyer'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-2">
+                        <button
+                          onClick={() => { setProfileOpen(false); onNavigate('/profile'); }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition"
+                        >
+                          <Settings className="w-4 h-4 text-gray-400" />
+                          Edit profile
+                        </button>
+                        {sessionRole === 'realtor' && (
+                          <button
+                            onClick={() => { setProfileOpen(false); onNavigate('/realtor/portal'); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition"
+                          >
+                            <User className="w-4 h-4 text-gray-400" />
+                            Realtor portal
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { setProfileOpen(false); handleSignOut(); }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 transition"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Sign out
+                        </button>
+                      </div>
+                    </div>
                   )}
-                </button>
-                <button onClick={handleSignOut} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
-                  Sign Out
-                </button>
+                </div>
               </>
             ) : (
               <>
