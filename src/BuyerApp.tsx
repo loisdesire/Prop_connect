@@ -10,6 +10,7 @@ import Messages from './components/Messages';
 import EscrowFlow from './components/EscrowFlow';
 import Dashboard from './components/Dashboard';
 import ProfilePage from './components/ProfilePage';
+import Services, { serviceFromSlug } from './components/Services';
 import { buildConversationRouteState } from './lib/messageFlow';
 import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star, Eye, EyeOff, User } from 'lucide-react';
 import { safeNum, safeStr, safeJsonArr } from './lib/utils';
@@ -649,6 +650,15 @@ export default function BuyerApp() {
     );
   };
 
+  const ServicesDetailRoute = () => {
+    const { slug } = useParams<{ slug: string }>();
+    const service = slug ? serviceFromSlug(slug) : undefined;
+    if (!service) {
+      return <Services onNavigate={(p) => navigate(p)} />;
+    }
+    return <Services slug={slug} onBack={() => navigate('/services')} onNavigate={(p) => navigate(p)} />;
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <Header currentPath={location.pathname} onNavigate={(page) => navigate(pageToPath(page))} />
@@ -666,6 +676,8 @@ export default function BuyerApp() {
           <Route path="signup-success" element={<SignupSuccess />} />
           <Route path="properties/:id" element={<PropertyDetailRoute />} />
           <Route path="agents/:id" element={<AgentProfileRoute />} />
+          <Route path="services" element={<Services onNavigate={(p) => navigate(p)} />} />
+          <Route path="services/:slug" element={<ServicesDetailRoute />} />
         </Routes>
       </motion.div>
 

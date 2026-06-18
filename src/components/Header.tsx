@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Home, Search, MessageSquare, Shield, User, Menu, X, Building2, ChevronDown } from 'lucide-react';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import supabase from '../lib/supabase';
+import { serviceTitleToSlug } from './Services';
 
 interface HeaderProps {
   currentPath: string;
@@ -154,16 +155,28 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
                   <ChevronDown className="w-4 h-4 transition-transform" style={{ transform: servicesOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
                 </button>
                 {servicesOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg py-2 w-48 z-10">
-                    {services.map((service) => (
-                      <button
-                        key={service}
-                        onClick={() => setServicesOpen(false)}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition"
-                      >
-                        {service}
-                      </button>
-                    ))}
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg py-2 w-56 z-10">
+                    <button
+                      onClick={() => { setServicesOpen(false); onNavigate('/services'); }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:bg-gray-50 transition"
+                    >
+                      All Services →
+                    </button>
+                    <div className="border-t border-gray-50 mt-1 pt-1">
+                      {services.map((service) => (
+                        <button
+                          key={service}
+                          onClick={() => {
+                            setServicesOpen(false);
+                            const slug = serviceTitleToSlug(service);
+                            onNavigate(slug ? `/services/${slug}` : '/services');
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition"
+                        >
+                          {service}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -234,10 +247,21 @@ export default function Header({ currentPath, onNavigate }: HeaderProps) {
             </button>
             {servicesOpen && (
               <div className="pl-6 space-y-1">
+                <button
+                  onClick={() => { setServicesOpen(false); setMobileOpen(false); onNavigate('/services'); }}
+                  className="w-full text-left px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider"
+                >
+                  All Services →
+                </button>
                 {services.map((service) => (
                   <button
                     key={service}
-                    onClick={() => { setServicesOpen(false); setMobileOpen(false); }}
+                    onClick={() => {
+                      setServicesOpen(false);
+                      setMobileOpen(false);
+                      const slug = serviceTitleToSlug(service);
+                      onNavigate(slug ? `/services/${slug}` : '/services');
+                    }}
                     className="w-full text-left px-3 py-2.5 text-sm text-gray-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition"
                   >
                     {service}
