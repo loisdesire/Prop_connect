@@ -1,16 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Home, TrendingUp, DollarSign, Users, Eye, Plus, ArrowUpRight, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Home, TrendingUp, DollarSign, Users, Eye, Plus, ArrowUpRight, Clock, CheckCircle, AlertCircle, Shield as ShieldIcon, MessageSquare } from 'lucide-react';
 import { motion } from 'framer-motion';
+import supabase from '../lib/supabase';
+import { safeNum } from '../lib/utils';
 
 interface DashboardProps {
   onNavigate: (page: string) => void;
 }
-
-const safeNum = (v: any, fallback: number): number => {
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') { const n = parseFloat(v); return isNaN(n) ? fallback : n; }
-  return fallback;
-};
 
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const [firstName, setFirstName] = useState<string | null>(null);
@@ -48,9 +44,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     let cancelled = false;
     const loadName = async () => {
       try {
-        const { data: { session } } = await (await import('../lib/supabase')).default.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user?.id) return;
-        const supabase = (await import('../lib/supabase')).default;
         const { data: profileData } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
         if (cancelled) return;
         setFirstName(profileData?.first_name || null);
@@ -199,9 +194,3 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   );
 }
 
-function ShieldIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>);
-}
-function MessageSquare(props: React.SVGProps<SVGSVGElement>) {
-  return (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>);
-}

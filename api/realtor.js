@@ -32,13 +32,12 @@ const resolveLeadName = (message, profileById) => {
 };
 
 const resolveAgentForRealtor = async ({ agentId, email }) => {
-  // Try to find realtor profile by ID first
-  if (agentId) {
+  // Try to find realtor profile by UUID first
+  if (agentId && typeof agentId === 'string') {
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', agentId)
-      .eq('role', 'realtor')
       .maybeSingle();
     if (profile) return { id: profile.id, ...buildAgentFromProfile(profile) };
   }
@@ -65,13 +64,13 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   try {
-    const requestedAgentId = parseInt(req.query.agent_id || '0', 10);
+    const requestedAgentId = typeof req.query.agent_id === 'string' && req.query.agent_id ? req.query.agent_id : null;
     const requestedEmail = typeof req.query.email === 'string' ? req.query.email : '';
 
     if (req.method === 'GET') {
       try {
         const agent = await resolveAgentForRealtor({ agentId: requestedAgentId, email: requestedEmail });
-        const AGENT_ID = agent?.id || (Number.isFinite(requestedAgentId) && requestedAgentId > 0 ? requestedAgentId : null);
+        const AGENT_ID = agent?.id || requestedAgentId || null;
         if (!AGENT_ID) return res.status(400).json({ error: 'Unable to resolve agent' });
 
         // Return complete realtor dashboard data in one call

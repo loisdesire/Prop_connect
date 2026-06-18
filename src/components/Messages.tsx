@@ -39,10 +39,14 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
   const [currentUserRole, setCurrentUserRole] = useState<'buyer' | 'realtor' | null>(null);
   const [selectedProfileName, setSelectedProfileName] = useState<string | null>(null);
   const [profileNames, setProfileNames] = useState<Map<string, string>>(new Map());
+  const [sendError, setSendError] = useState<string | null>(null);
   const [pendingConversationId, setPendingConversationId] = useState<string | null>(normalizeConversationId(routeState?.openConversationWith));
   const [pendingConversationName, setPendingConversationName] = useState<string | null>(normalizeConversationId(routeState?.openConversationWithName));
   const [draftFromRoute, setDraftFromRoute] = useState<string>(normalizeConversationId(routeState?.draftMessage) || '');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Refs mirror state so isSelfMessage always reads latest values even during async renders
+  const currentUserIdRef = useRef('');
+  const currentUserRoleRef = useRef<'buyer' | 'realtor' | null>(null);
 
   const buildFullName = (profileData: any) => {
     if (!profileData) return null;
@@ -127,6 +131,7 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
       if (!session?.user?.id) return { userId: '', role: null as 'buyer' | 'realtor' | null };
 
       setCurrentUserId(session.user.id);
+      currentUserIdRef.current = session.user.id;
 
       const { data: profileData } = await supabase
         .from('profiles')
@@ -155,7 +160,8 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
       else setCurrentUserName(buildFallbackDisplayName(role, session.user.email));
 
       setCurrentUserRole(role);
-      
+      currentUserRoleRef.current = role;
+
       // Add current user to profile names map
       const newNames = new Map(profileNames);
       if (resolvedName) newNames.set(session.user.id, resolvedName);
@@ -269,6 +275,7 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
   const sendMessage = async () => {
     const conversationId = selectedConv || pendingConversationId;
     if (!newMessage.trim() || !conversationId) return;
+    setSendError(null);
 
     const selectedMessages = conversations.get(conversationId) || [];
     const lastMsg = selectedMessages[selectedMessages.length - 1];
@@ -302,8 +309,8 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
       setNewMessage('');
       setDraftFromRoute('');
       await fetchMessages();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setSendError(err?.message || 'Failed to send message. Please try again.');
     }
   };
 
@@ -331,12 +338,12 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
   const canCompose = Boolean(selectedConv || pendingConversationId);
 
   const isSelfMessage = (msg: Message) => {
-    // For realtors: check if message was sent by this realtor (sender_id is agent-${threadUserId})
-    if (currentUserRole === 'realtor' && threadUserId) {
-      return msg.sender_id === `agent-${threadUserId}` || msg.sender_id === currentUserId;
+    const userId = currentUserIdRef.current || currentUserId;
+    const role = currentUserRoleRef.current ?? currentUserRole;
+    if (role === 'realtor' && threadUserId) {
+      return msg.sender_id === `agent-${threadUserId}` || msg.sender_id === userId;
     }
-    // For buyers: check if message was sent by this buyer (sender_id is their UUID)
-    return msg.sender_id === currentUserId;
+    return msg.sender_id === userId;
   };
 
   useEffect(() => {
@@ -475,11 +482,14 @@ export default function Messages({ onBack, initialState, threadUserId }: Message
                   </div>
 
                   <div className="p-4 border-t border-gray-100">
+                    {sendError && (
+                      <p className="text-xs text-red-600 mb-2 px-1">{sendError}</p>
+                    )}
                     <div className="flex gap-3">
                       <input
                         type="text"
                         value={newMessage}
-                        onChange={e => setNewMessage(e.target.value)}
+                        onChange={e => { setNewMessage(e.target.value); if (sendError) setSendError(null); }}
                         onKeyDown={e => e.key === 'Enter' && sendMessage()}
                         placeholder="Type your message..."
                         className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

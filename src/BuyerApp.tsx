@@ -12,32 +12,12 @@ import Dashboard from './components/Dashboard';
 import ProfilePage from './components/ProfilePage';
 import { buildConversationRouteState } from './lib/messageFlow';
 import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star, Eye, EyeOff, User } from 'lucide-react';
+import { safeNum, safeStr, safeJsonArr } from './lib/utils';
 import { motion } from 'framer-motion';
 import type { Agent, Property } from './types';
 import supabase from './lib/supabase';
 
 type RouteState<T> = { state?: T };
-
-const safeNum = (v: any, fallback: number): number => {
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') { const n = parseFloat(v); return isNaN(n) ? fallback : n; }
-  return fallback;
-};
-
-const safeStr = (v: any, fallback: string = ''): string => {
-  if (typeof v === 'string') return v;
-  if (v == null) return fallback;
-  return String(v);
-};
-
-const safeJsonArr = (v: any): string[] => {
-  if (Array.isArray(v)) return v;
-  if (typeof v === 'string') {
-    try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; }
-    catch { return []; }
-  }
-  return [];
-};
 
 const pageToPath = (page: string): string => {
   if (page.startsWith('/')) return page;
@@ -572,12 +552,12 @@ export default function BuyerApp() {
             return;
           }
 
-          // As a last resort, try fetching agents list and match by id/email
-          const { data: agentsList } = await supabase.from('agents').select('*').limit(100);
-          if (agentsList && agentsList.length > 0) {
-            const found = agentsList.find((a: any) => String(a.id) === String(params.id) || (a.email && a.email.toLowerCase() === String(params.id).toLowerCase()));
+          // As a last resort, try profiles table filtered by realtor role
+          const { data: realtorsList } = await supabase.from('profiles').select('*').eq('role', 'realtor').limit(100);
+          if (realtorsList && realtorsList.length > 0) {
+            const found = realtorsList.find((a: any) => String(a.id) === String(params.id) || (a.email && a.email.toLowerCase() === String(params.id).toLowerCase()));
             if (found) {
-              setAgent(found as Agent);
+              setAgent(normalizeFromProfile(found));
               return;
             }
           }
@@ -912,81 +892,130 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
-          <p className="text-gray-500 mt-2">{subtitle}</p>
-        </div>
+  const accentColor = role === 'realtor' ? 'indigo' : 'blue';
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-gray-900 mb-4">Choose your role</h3>
-            <div className="grid gap-3">
+  return (
+    <div className="min-h-screen flex">
+      {/* Left branding panel */}
+      <div className="hidden lg:flex lg:w-5/12 xl:w-1/2 relative bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 flex-col justify-between p-12 text-white overflow-hidden">
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-2">
+            <BuildingIcon className="w-7 h-7" />
+            <span className="text-xl font-bold tracking-tight">PropConnect</span>
+          </div>
+          <p className="text-blue-200 text-sm">Nigeria's trusted real estate platform</p>
+        </div>
+        <div className="relative space-y-8">
+          <div>
+            <h2 className="text-3xl font-bold leading-snug">{mode === 'signup' ? 'Start your property journey today.' : 'Welcome back to PropConnect.'}</h2>
+            <p className="text-blue-200 mt-3 text-base">{mode === 'signup' ? 'Join thousands of buyers and realtors finding and closing deals on Nigeria\'s fastest growing property platform.' : 'Pick up right where you left off.'}</p>
+          </div>
+          <div className="space-y-4">
+            {[
+              { icon: ShieldIcon, label: 'Secure Escrow', desc: 'Protected transactions every step of the way' },
+              { icon: SearchIcon, label: 'Verified Listings', desc: 'Browse thousands of authentic properties' },
+              { icon: TrendingUp, label: 'Market Insights', desc: 'Data-driven tools for smarter decisions' },
+            ].map(({ icon: Icon, label, desc }) => (
+              <div key={label} className="flex items-start gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+                  <Icon className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <div className="font-semibold text-sm">{label}</div>
+                  <div className="text-blue-200 text-xs">{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="relative text-blue-300 text-xs">© {new Date().getFullYear()} PropConnect. All rights reserved.</p>
+      </div>
+
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-gray-50">
+        <div className="w-full max-w-md">
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2 mb-8 lg:hidden">
+            <BuildingIcon className="w-6 h-6 text-blue-600" />
+            <span className="text-lg font-bold text-gray-900">PropConnect</span>
+          </div>
+
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>
+          </div>
+
+          {/* Role tabs (signup only) */}
+          {mode === 'signup' && (
+            <div className="flex rounded-xl bg-gray-100 p-1 mb-6">
               <button
                 type="button"
                 onClick={() => setRole('buyer')}
-                className={`text-left p-4 rounded-xl border transition ${role === 'buyer' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-200'}`}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${role === 'buyer' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                <div className="font-semibold text-gray-900">Buyer</div>
-                <div className="text-sm text-gray-500">Browse listings, message agents, and use escrow tools.</div>
+                Buyer
               </button>
               <button
                 type="button"
                 onClick={() => setRole('realtor')}
-                className={`text-left p-4 rounded-xl border transition ${role === 'realtor' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-200'}`}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${role === 'realtor' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                <div className="font-semibold text-gray-900">Realtor</div>
-                <div className="text-sm text-gray-500">Create listings, manage leads, and track deals.</div>
+                Realtor
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-4">You can switch roles later in settings.</p>
-          </div>
+          )}
 
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">First name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">First name</label>
                   <input
                     value={form.firstName}
                     onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                     placeholder="First name"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Last name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Last name</label>
                   <input
                     value={form.lastName}
                     onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                     placeholder="Last name"
                   />
                 </div>
               </div>
             )}
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
               <input
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                 placeholder="you@email.com"
                 required
               />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-gray-700">Password</label>
+                {mode === 'signin' && (
+                  <button type="button" className="text-xs text-blue-600 hover:text-blue-700 font-medium">Forgot password?</button>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition pr-10"
                   placeholder="••••••••"
                   required
                 />
@@ -995,60 +1024,60 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
             {role === 'realtor' && mode === 'signup' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Company</label>
                   <input
                     value={form.company}
                     onChange={(e) => setForm({ ...form, company: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                     placeholder="Agency name"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">License #</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">License #</label>
                   <input
                     value={form.license}
                     onChange={(e) => setForm({ ...form, license: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                     placeholder="Optional"
                   />
                 </div>
               </div>
             )}
 
+            {authError && (
+              <div className="flex items-start gap-2 px-3.5 py-3 bg-red-50 border border-red-200 rounded-lg">
+                <span className="text-red-600 text-sm">{authError}</span>
+              </div>
+            )}
+            {authNotice && (
+              <div className="flex items-start gap-2 px-3.5 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <span className="text-emerald-700 text-sm">{authNotice}</span>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={submitting}
-              className={`w-full px-5 py-2.5 font-semibold rounded-xl transition ${role === 'realtor' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'} ${submitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`w-full py-2.5 font-semibold rounded-lg text-sm transition ${accentColor === 'indigo' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} text-white ${submitting ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
-              {submitting ? 'Please wait...' : mode === 'signup' ? 'Create account' : 'Sign in'}
+              {submitting ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
             </button>
-            <p className="text-sm text-gray-500 text-center">
+
+            <p className="text-sm text-gray-500 text-center pt-1">
               {mode === 'signup' ? (
-                <>
-                  Already have an account?{' '}
-                  <button type="button" onClick={() => navigate('/signin')} className="font-semibold text-blue-600 hover:text-blue-700">
-                    Sign in
-                  </button>
-                </>
+                <>Already have an account?{' '}<button type="button" onClick={() => navigate('/signin')} className="font-semibold text-blue-600 hover:text-blue-700">Sign in</button></>
               ) : (
-                <>
-                  Don't have an account?{' '}
-                  <button type="button" onClick={() => navigate('/signup')} className="font-semibold text-blue-600 hover:text-blue-700">
-                    Sign up
-                  </button>
-                </>
+                <>Don't have an account?{' '}<button type="button" onClick={() => navigate('/signup')} className="font-semibold text-blue-600 hover:text-blue-700">Sign up</button></>
               )}
             </p>
-            {authError && <p className="text-sm text-red-600">{authError}</p>}
-            {authNotice && <p className="text-sm text-emerald-600">{authNotice}</p>}
           </form>
         </div>
       </div>

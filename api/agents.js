@@ -71,7 +71,7 @@ export default async function handler(req, res) {
             .in('agent_id', realtorIds)
         : { data: [] };
 
-      const propsByAgent: Record<string, any[]> = {};
+      const propsByAgent = {};
       (allProps || []).forEach((property) => {
         if (!propsByAgent[property.agent_id]) propsByAgent[property.agent_id] = [];
         propsByAgent[property.agent_id].push(property);

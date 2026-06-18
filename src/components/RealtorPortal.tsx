@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { 
-  Home, TrendingUp, DollarSign, MessageSquare, Users, Eye, Plus, Edit3, Trash2, 
-  ArrowUpRight, Clock, CheckCircle, AlertCircle, Send, BarChart3, 
+import {
+  Home, TrendingUp, DollarSign, MessageSquare, Users, Eye, Plus, Edit3, Trash2,
+  ArrowUpRight, Clock, CheckCircle, AlertCircle, Send, BarChart3,
   Calendar, Star, Package, Target, ArrowRight, ChevronDown, ChevronUp,
-  Briefcase, Heart, Filter, LogOut, Settings, Bell, Zap, User
+  Briefcase, Heart, Filter, LogOut, Settings, Bell, Zap, User,
+  Shield as ShieldIcon, FileCheck as FileCheckIcon, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Property as PropertyType } from '../types';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../lib/supabase';
 import { buildConversationRouteState } from '../lib/messageFlow';
+import { safeNum } from '../lib/utils';
 import Messages from './Messages';
 import PropertyCard from './PropertyCard';
 import SearchFilters, { FilterState } from './SearchFilters';
@@ -26,12 +28,6 @@ interface DashboardData {
   leads: any[];
   monthlyPerformance: any[];
 }
-
-const safeNum = (v: any, fallback: number): number => {
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') { const n = parseFloat(v); return isNaN(n) ? fallback : n; }
-  return fallback;
-};
 
 const formatCurrency = (n: number) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(n);
 const formatDate = (d: string) => new Date(d).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -76,7 +72,7 @@ export default function RealtorPortal() {
   const [showNewListing, setShowNewListing] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [agentId, setAgentId] = useState<number | null>(null);
+  const [agentId, setAgentId] = useState<string | null>(null);
   const [marketplaceProperties, setMarketplaceProperties] = useState<PropertyType[]>([]);
   const [marketplaceLoading, setMarketplaceLoading] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
@@ -157,22 +153,14 @@ export default function RealtorPortal() {
 
           setCurrentUser({ ...profile, email, first_name: profile.first_name || null, last_name: profile.last_name || null, full_name: displayName, avatar_url: profile.avatar_url || session.user.user_metadata?.avatar_url || null });
 
-          // Simply fetch the dashboard data (which includes the agent that was created during signup)
-          console.log('[RealtorPortal] Fetching realtor data for email:', email);
           try {
             const res = await fetch(`/api/realtor?email=${encodeURIComponent(email)}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const d = await res.json();
-            console.log('[RealtorPortal] Realtor data received:', d);
             setData(d);
-            if (d?.agent?.id) {
-              setAgentId(d.agent.id);
-              console.log('[RealtorPortal] ✅ Agent set to:', d.agent.id);
-            } else {
-              console.warn('[RealtorPortal] ⚠️ No agent returned from realtor endpoint');
-            }
+            if (d?.agent?.id) setAgentId(String(d.agent.id));
           } catch (err) {
-            console.error('[RealtorPortal] ❌ Failed to load realtor data:', err);
+            console.error('Failed to load realtor data:', err);
           }
           return;
         }
@@ -261,8 +249,9 @@ export default function RealtorPortal() {
   };
 
   const refreshRealtorData = async () => {
-    if (!agentId) return;
-    const d = await fetch(`/api/realtor?agent_id=${agentId}`).then(r => r.json());
+    const email = currentUser?.email;
+    if (!email) return;
+    const d = await fetch(`/api/realtor?email=${encodeURIComponent(email)}`).then(r => r.json());
     setData(d);
   };
 
@@ -841,8 +830,6 @@ export default function RealtorPortal() {
   };
 
   const handleCreateListing = async () => {
-    console.log('[handleCreateListing] Current agentId:', agentId);
-    
     if (!newListing.title || !newListing.price) {
       setFeedbackModal({
         open: true,
@@ -853,9 +840,7 @@ export default function RealtorPortal() {
       return;
     }
 
-    console.log('[handleCreateListing] Checking agentId:', agentId, 'type:', typeof agentId);
     if (!agentId) {
-      console.error('❌ agentId is falsy:', agentId);
       setFeedbackModal({
         open: true,
         kind: 'error',
@@ -864,7 +849,6 @@ export default function RealtorPortal() {
       });
       return;
     }
-    console.log('✅ agentId check passed, proceeding with listing creation');
 
     if (!newListing.images.length) {
       setFeedbackModal({
@@ -1137,7 +1121,7 @@ export default function RealtorPortal() {
                     className={`p-2 rounded-full transition ${feedbackModal.kind === 'success' ? 'hover:bg-emerald-100' : 'hover:bg-red-100'}`}
                     aria-label="Close message"
                   >
-                    <Trash2 className={`w-5 h-5 ${feedbackModal.kind === 'success' ? 'text-emerald-700' : 'text-red-700'}`} />
+                    <X className={`w-5 h-5 ${feedbackModal.kind === 'success' ? 'text-emerald-700' : 'text-red-700'}`} />
                   </button>
                 </div>
               </div>
@@ -1157,9 +1141,3 @@ export default function RealtorPortal() {
   );
 }
 
-function ShieldIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>);
-}
-function FileCheckIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>);
-}
