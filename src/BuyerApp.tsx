@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
-import Header from './components/Header';
+import GuestHeader from './components/Header';
 import Sidebar from './components/Sidebar';
 import Hero from './components/Hero';
 import PropertyCard from './components/PropertyCard';
@@ -13,7 +13,7 @@ import Dashboard from './components/Dashboard';
 import ProfilePage from './components/ProfilePage';
 import Services, { serviceFromSlug } from './components/Services';
 import { buildConversationRouteState } from './lib/messageFlow';
-import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star, Eye, EyeOff, User } from 'lucide-react';
+import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star, Eye, EyeOff, User, Menu, Building2 } from 'lucide-react';
 import { safeNum, safeStr, safeJsonArr } from './lib/utils';
 import { motion } from 'framer-motion';
 import type { Agent, Property } from './types';
@@ -227,7 +227,7 @@ export default function BuyerApp() {
       .then(async res => {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Escrow failed');
-        alert(`✅ Escrow Initiated!\n\nProperty: ${property.title}\nAmount: ₦${amount.toLocaleString('en-NG')}\n\nYour funds are now protected by PropTrust Escrow. Navigate to "How It Works" to see the milestone process.`);
+        alert(`✅ Escrow Initiated!\n\nProperty: ${property.title}\nAmount: ₦${amount.toLocaleString('en-NG')}\n\nYour funds are now protected by PropConnect Escrow. Navigate to "How It Works" to see the milestone process.`);
       })
       .catch(err => {
         console.error('Escrow initiation error:', err);
@@ -245,18 +245,18 @@ export default function BuyerApp() {
       return (
         <div className="min-h-full bg-gray-50">
           {/* Welcome banner */}
-          <div className="bg-white border-b border-gray-100 px-6 py-8">
+          <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-6 sm:py-8">
             <div className="max-w-6xl mx-auto">
-              <h1 className="text-2xl font-bold text-gray-900">{greeting}, {firstName} 👋</h1>
-              <p className="text-gray-500 mt-1">Here's what's happening on PropConnect today.</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{greeting}, {firstName} 👋</h1>
+              <p className="text-gray-500 mt-1 text-sm sm:text-base">Here's what's happening on PropConnect today.</p>
 
               {/* Quick search */}
-              <div className="mt-5 flex items-center gap-3 max-w-xl">
+              <div className="mt-4 flex items-center gap-2 sm:gap-3 max-w-xl">
                 <div className="flex-1 relative">
                   <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search by city, type, or price…"
+                    placeholder="Search city, type, price…"
                     className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -268,7 +268,7 @@ export default function BuyerApp() {
                 </div>
                 <button
                   onClick={() => navigate('/listings')}
-                  className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition"
+                  className="shrink-0 px-4 sm:px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition"
                 >
                   Browse All
                 </button>
@@ -276,33 +276,33 @@ export default function BuyerApp() {
             </div>
           </div>
 
-          <div className="max-w-6xl mx-auto px-6 py-8 space-y-12">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-10 sm:space-y-12">
             {/* Hot right now */}
             <section>
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between mb-4 sm:mb-5">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-orange-500" /> Hot right now
                   </h2>
-                  <p className="text-sm text-gray-500 mt-0.5">Newest listings on the platform</p>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Newest listings on the platform</p>
                 </div>
-                <button onClick={() => navigate('/listings')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition">
+                <button onClick={() => navigate('/listings')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition shrink-0">
                   See all <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
               {loading ? (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   {[...Array(4)].map((_, i) => (
                     <div key={i} className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
-                      <div className="h-40 bg-gray-200" />
-                      <div className="p-4 space-y-2"><div className="h-4 bg-gray-200 rounded w-3/4" /><div className="h-3 bg-gray-100 rounded w-1/2" /></div>
+                      <div className="h-32 sm:h-40 bg-gray-200" />
+                      <div className="p-3 sm:p-4 space-y-2"><div className="h-4 bg-gray-200 rounded w-3/4" /><div className="h-3 bg-gray-100 rounded w-1/2" /></div>
                     </div>
                   ))}
                 </div>
               ) : hotProperties.length === 0 ? (
                 <p className="text-gray-400 text-sm">No listings yet — check back soon.</p>
               ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   {hotProperties.map((property, i) => (
                     <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
                   ))}
@@ -312,31 +312,31 @@ export default function BuyerApp() {
 
             {/* Browse listings */}
             <section>
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between mb-4 sm:mb-5">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Browse listings</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">{properties.length > 0 ? `${properties.length} properties available` : 'Find your perfect home'}</p>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">Browse listings</h2>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-0.5">{properties.length > 0 ? `${properties.length} properties available` : 'Find your perfect home'}</p>
                 </div>
-                <button onClick={() => navigate('/listings')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition">
+                <button onClick={() => navigate('/listings')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition shrink-0">
                   View all <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
               {loading ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                   {[...Array(6)].map((_, i) => (
                     <div key={i} className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
-                      <div className="h-48 bg-gray-200" />
-                      <div className="p-5 space-y-3"><div className="h-4 bg-gray-200 rounded w-3/4" /><div className="h-3 bg-gray-100 rounded w-1/2" /></div>
+                      <div className="h-44 sm:h-48 bg-gray-200" />
+                      <div className="p-4 sm:p-5 space-y-3"><div className="h-4 bg-gray-200 rounded w-3/4" /><div className="h-3 bg-gray-100 rounded w-1/2" /></div>
                     </div>
                   ))}
                 </div>
               ) : properties.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
+                <div className="text-center py-10 sm:py-12 bg-white rounded-2xl border border-gray-100">
                   <BuildingIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500">No properties yet.</p>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                   {properties.slice(0, 6).map((property, i) => (
                     <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
                   ))}
@@ -346,17 +346,17 @@ export default function BuyerApp() {
 
             {/* Top agents */}
             <section>
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between mb-4 sm:mb-5">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Top agents</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">Connect with trusted professionals</p>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">Top agents</h2>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Connect with trusted professionals</p>
                 </div>
-                <button onClick={() => navigate('/agents')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition">
+                <button onClick={() => navigate('/agents')} className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition shrink-0">
                   View all <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
               {agents.length > 0 ? (
-                <div className="grid md:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                   {agents.slice(0, 3).map((agent, i) => (
                     <AgentCard key={agent.id} agent={agent} onSelect={handleViewAgent} index={i} />
                   ))}
@@ -432,7 +432,7 @@ export default function BuyerApp() {
         <section className="py-20 bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
-              <h2 className="text-3xl font-bold text-gray-900 mb-3">How PropTrust Works</h2>
+              <h2 className="text-3xl font-bold text-gray-900 mb-3">How PropConnect Works</h2>
               <p className="text-gray-500 max-w-xl mx-auto">The simple, secure way to buy or sell real estate</p>
             </div>
             <div className="grid md:grid-cols-4 gap-8">
@@ -483,7 +483,7 @@ export default function BuyerApp() {
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
               <ShieldIcon className="w-14 h-14 text-blue-200 mx-auto mb-6" />
               <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Ready to Buy or Sell with Confidence?</h2>
-              <p className="text-lg text-blue-100/80 mb-8 max-w-2xl mx-auto">Join thousands who trust PropTrust for secure, transparent transactions.</p>
+              <p className="text-lg text-blue-100/80 mb-8 max-w-2xl mx-auto">Join thousands who trust PropConnect for secure, transparent transactions.</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button onClick={() => navigate('/listings')} className="px-8 py-4 bg-white text-blue-700 font-semibold rounded-xl hover:bg-blue-50 transition shadow-lg">Browse Listings</button>
                 <button onClick={() => navigate('/signup?role=buyer')} className="px-8 py-4 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition shadow-lg">Sign Up as Buyer</button>
@@ -818,12 +818,18 @@ export default function BuyerApp() {
           onMobileClose={() => setSidebarMobileOpen(false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Header
-            currentPath={location.pathname}
-            onNavigate={(page) => navigate(pageToPath(page))}
-            isAuthenticated={true}
-            onMenuToggle={() => setSidebarMobileOpen(true)}
-          />
+          {/* Mobile-only top bar — just a hamburger to open the sidebar */}
+          <div className="md:hidden flex items-center gap-3 h-14 px-4 bg-white border-b border-gray-100 shrink-0">
+            <button onClick={() => setSidebarMobileOpen(true)} className="p-2 -ml-2 rounded-lg text-gray-500 hover:bg-gray-100 transition">
+              <Menu className="w-5 h-5" />
+            </button>
+            <button onClick={() => navigate('/')} className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
+                <Building2 className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-base font-bold text-gray-900">PropConnect</span>
+            </button>
+          </div>
           <main className="flex-1 overflow-y-auto">
             {mainContent}
           </main>
@@ -834,7 +840,7 @@ export default function BuyerApp() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Header currentPath={location.pathname} onNavigate={(page) => navigate(pageToPath(page))} isAuthenticated={false} />
+      <GuestHeader currentPath={location.pathname} onNavigate={(page) => navigate(pageToPath(page))} />
       {mainContent}
       <footer className="bg-slate-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -842,7 +848,7 @@ export default function BuyerApp() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center"><BuildingIcon className="w-5 h-5 text-white" /></div>
-                <span className="text-xl font-bold">PropTrust</span>
+                <span className="text-xl font-bold">PropConnect</span>
               </div>
               <p className="text-sm text-slate-400 leading-relaxed">Secure real estate transactions you can trust.</p>
             </div>
@@ -858,8 +864,8 @@ export default function BuyerApp() {
             ))}
           </div>
           <div className="border-t border-slate-800 mt-10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-slate-500">© 2025 PropTrust. All rights reserved.</p>
-            <div className="flex items-center gap-2 text-sm text-slate-400"><ShieldIcon className="w-4 h-4" /> Secured by PropTrust Escrow</div>
+            <p className="text-sm text-slate-500">© 2025 PropConnect. All rights reserved.</p>
+            <div className="flex items-center gap-2 text-sm text-slate-400"><ShieldIcon className="w-4 h-4" /> Secured by PropConnect Escrow</div>
           </div>
         </div>
       </footer>
@@ -881,7 +887,7 @@ function SignupChoice({ mode, onBuyer, onRealtor }: SignupChoiceProps) {
   
   const title = mode === 'signup' ? 'Create your account' : 'Welcome back';
   const subtitle = mode === 'signup'
-    ? 'Choose how you want to use PropTrust.'
+    ? 'Choose how you want to use PropConnect.'
     : 'Sign in to the experience that fits you.';
   const [role, setRole] = useState<'buyer' | 'realtor'>(roleFromUrl || 'buyer');
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', company: '', license: '' });
