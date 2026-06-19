@@ -10,6 +10,7 @@ export interface FilterState {
   bedrooms?: number;
   bathrooms?: number;
   status?: string;
+  sortBy?: string;
 }
 
 interface SearchFiltersProps {
@@ -70,6 +71,24 @@ export default function SearchFilters({ filters, onFilterChange, resultCount }: 
               <option value="Port Harcourt">Port Harcourt</option>
               <option value="Kano">Kano</option>
               <option value="Enugu">Enugu</option>
+              <option value="Ibadan">Ibadan</option>
+              <option value="Benin City">Benin City</option>
+              <option value="Calabar">Calabar</option>
+              <option value="Kaduna">Kaduna</option>
+              <option value="Owerri">Owerri</option>
+              <option value="Asaba">Asaba</option>
+            </select>
+
+            <select
+              value={filters.sortBy || ''}
+              onChange={e => updateFilter('sortBy', e.target.value)}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="">Sort: Newest</option>
+              <option value="price_asc">Price: Low to High</option>
+              <option value="price_desc">Price: High to Low</option>
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
             </select>
             
             <select

@@ -83,6 +83,8 @@ export default function RealtorPortal() {
   const [newListing, setNewListing] = useState<ListingFormState>(emptyListing);
   const [listingError, setListingError] = useState<string | null>(null);
   const [activeLeadThread, setActiveLeadThread] = useState<any | null>(null);
+  const [listingsStatusFilter, setListingsStatusFilter] = useState<string | null>(null);
+  const [listingValidated, setListingValidated] = useState(false);
   const [feedbackModal, setFeedbackModal] = useState<{ open: boolean; title: string; message: string; kind: 'success' | 'error' }>({
     open: false,
     title: '',
@@ -495,56 +497,87 @@ export default function RealtorPortal() {
     </div>
   );
 
-  const renderListings = () => (
+  const renderListings = () => {
+    const allProps: any[] = data?.properties || [];
+    const filteredProps = listingsStatusFilter ? allProps.filter((p: any) => p.status === listingsStatusFilter) : allProps;
+    const statusTabs = [
+      { label: 'All', filter: null, count: allProps.length },
+      { label: 'Active', filter: 'available', count: allProps.filter((p: any) => p.status === 'available').length },
+      { label: 'Pending', filter: 'pending', count: allProps.filter((p: any) => p.status === 'pending').length },
+      { label: 'Sold', filter: 'sold', count: allProps.filter((p: any) => p.status === 'sold').length },
+    ];
+    const fallbackImages: Record<string, string> = {
+      house: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=80&h=60&fit=crop',
+      apartment: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=80&h=60&fit=crop',
+      condo: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=80&h=60&fit=crop',
+      townhouse: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=80&h=60&fit=crop',
+    };
+    const getPropImage = (prop: any) => {
+      let imgs: string[] = [];
+      if (prop.images) {
+        if (Array.isArray(prop.images)) imgs = prop.images;
+        else if (typeof prop.images === 'string') { try { imgs = JSON.parse(prop.images); } catch { /* */ } }
+      }
+      return imgs[0] || fallbackImages[prop.type] || fallbackImages.house;
+    };
+
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div><h2 className="text-xl font-bold text-gray-900">My Listings</h2><p className="text-sm text-gray-500 mt-1">Manage all your property listings</p></div>
-            <button onClick={openCreateListing} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25"><Plus className="w-5 h-5" /> Add New Listing</button>
+        <button onClick={openCreateListing} className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25"><Plus className="w-5 h-5" /> Add New Listing</button>
       </div>
 
       {/* Status Tabs */}
-      <div className="flex gap-2">
-        {[{ label: 'All', filter: null }, { label: `Active (${s.activeListings || 0})`, filter: 'available' }, { label: `Pending (${s.pendingListings || 0})`, filter: 'pending' }, { label: `Sold (${s.soldListings || 0})`, filter: 'sold' }].map(tab => (
-          <button key={tab.label} className="px-4 py-2 text-sm font-medium rounded-xl bg-white border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 transition">{tab.label}</button>
+      <div className="flex gap-2 flex-wrap">
+        {statusTabs.map(tab => (
+          <button
+            key={String(tab.filter)}
+            onClick={() => setListingsStatusFilter(tab.filter)}
+            className={`px-4 py-2 text-sm font-medium rounded-xl border transition ${listingsStatusFilter === tab.filter ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600'}`}
+          >
+            {tab.label} <span className="ml-1 opacity-70">({tab.count})</span>
+          </button>
         ))}
       </div>
 
-      {/* Listings Grid/Table */}
+      {/* Listings Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Property', 'Location', 'Price', 'Status', 'Views', 'Leads', 'Actions'].map(h => (
+                {['Property', 'Location', 'Price', 'Status', 'Actions'].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {(data?.properties || []).map((prop: any) => (
+              {filteredProps.map((prop: any) => (
                 <tr key={prop.id} className="hover:bg-gray-50 transition">
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-16 h-12 rounded-lg bg-gray-100 overflow-hidden shrink-0">
-                        <img src={"https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=80&amp;h=60&amp;fit=crop"} alt="" className="w-full h-full object-cover" />
+                        <img src={getPropImage(prop)} alt="" className="w-full h-full object-cover" />
                       </div>
-                      <div className="max-w-[220px]"><p className="text-sm font-medium text-gray-900 truncate">{prop.title}</p><p className="text-xs text-gray-400 capitalize">{prop.type}</p></div>
+                      <div className="max-w-[220px]">
+                        <p className="text-sm font-medium text-gray-900 truncate">{prop.title}</p>
+                        <p className="text-xs text-gray-400 capitalize">{prop.type}</p>
+                      </div>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-sm text-gray-600">{prop.city}, {prop.state}</td>
-                  <td className="px-5 py-4 text-sm font-semibold text-gray-900">${safeNum(prop.price, 0).toLocaleString()}</td>
+                  <td className="px-5 py-4 text-sm font-semibold text-gray-900">{formatCurrency(safeNum(prop.price, 0))}</td>
                   <td className="px-5 py-4">
                     <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-lg ${prop.status === 'available' ? 'bg-green-50 text-green-600' : prop.status === 'pending' ? 'bg-amber-50 text-amber-600' : prop.status === 'sold' ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
                       {prop.status === 'available' ? '● Active' : prop.status === 'pending' ? '● Pending' : prop.status === 'sold' ? '✓ Sold' : '○ Off Market'}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-500">{Math.floor(Math.random() * 500 + 50)}</td>
-                  <td className="px-5 py-4 text-sm text-gray-500">{Math.floor(Math.random() * 15)}</td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-1">
                       <button onClick={() => openEditListing(prop)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit3 className="w-4 h-4" /></button>
                       <button onClick={() => handleDeleteListing(prop.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                      <button onClick={() => handlePromoteListing(prop)} className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition" title="Promote"><Zap className="w-4 h-4" /></button>
+                      <button onClick={() => handlePromoteListing(prop)} className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition" title={prop.status === 'available' ? 'Mark as Pending' : 'Mark as Available'}><Zap className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -552,12 +585,16 @@ export default function RealtorPortal() {
             </tbody>
           </table>
         </div>
-        {(data?.properties || []).length === 0 && (
-          <div className="p-12 text-center text-gray-400"><Package className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>No listings yet. Create your first one!</p></div>
+        {filteredProps.length === 0 && (
+          <div className="p-12 text-center text-gray-400">
+            <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>{allProps.length === 0 ? 'No listings yet. Create your first one!' : 'No listings match this filter.'}</p>
+          </div>
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   const renderLeads = () => (
     <div className="space-y-5">
@@ -790,6 +827,7 @@ export default function RealtorPortal() {
       setListingMode('create');
       setEditingPropertyId(null);
       setListingError(null);
+      setListingValidated(false);
     }
   }, [showNewListing]);
 
@@ -830,13 +868,9 @@ export default function RealtorPortal() {
   };
 
   const handleCreateListing = async () => {
-    if (!newListing.title || !newListing.price) {
-      setFeedbackModal({
-        open: true,
-        kind: 'error',
-        title: 'Missing required fields',
-        message: 'Title and price are required before you can publish a listing.',
-      });
+    setListingValidated(true);
+
+    if (!newListing.title || !newListing.price || !newListing.images.length) {
       return;
     }
 
@@ -850,21 +884,13 @@ export default function RealtorPortal() {
       return;
     }
 
-    if (!newListing.images.length) {
-      setFeedbackModal({
-        open: true,
-        kind: 'error',
-        title: 'Images required',
-        message: 'Please upload at least one property image before submitting the listing.',
-      });
-      return;
-    }
-
     try {
       const res = await fetch('/api/properties', {
         method: listingMode === 'edit' ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(listingMode === 'edit' ? { ...newListing, id: editingPropertyId, agent_id: agentId, images: newListing.images, features: [] } : { ...newListing, agent_id: agentId, images: newListing.images, features: [] }),
+        body: JSON.stringify(listingMode === 'edit'
+          ? (() => { const amenities = (() => { try { return JSON.parse(newListing.description.match(/\[AMENITIES:(.*?)\]/)?.[1] || '[]'); } catch { return []; } })(); const desc = newListing.description.replace(/\[AMENITIES:.*?\]/g, '').trim(); return { ...newListing, description: desc, id: editingPropertyId, agent_id: agentId, images: newListing.images, features: [], amenities }; })()
+          : (() => { const amenities = (() => { try { return JSON.parse(newListing.description.match(/\[AMENITIES:(.*?)\]/)?.[1] || '[]'); } catch { return []; } })(); const desc = newListing.description.replace(/\[AMENITIES:.*?\]/g, '').trim(); return { ...newListing, description: desc, agent_id: agentId, images: newListing.images, features: [], amenities }; })()),
       });
       const responseData = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(responseData.error || `Failed to ${listingMode === 'edit' ? 'update' : 'create'} listing`);
@@ -1035,54 +1061,143 @@ export default function RealtorPortal() {
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-gray-900">{listingMode === 'edit' ? 'Edit Listing' : 'Create New Listing'}</h2>
-                <button onClick={() => setShowNewListing(false)} className="p-2 hover:bg-gray-100 rounded-lg transition"><Trash2 className="w-5 h-5 text-gray-400" /></button>
+                <button onClick={() => setShowNewListing(false)} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5 text-gray-400" /></button>
               </div>
               <div className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Property Title *</label><input value={newListing.title} onChange={e => setNewListing({...newListing, title: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="e.g. Modern Downtown Loft" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Price (₦) *</label><input type="number" value={newListing.price} onChange={e => setNewListing({...newListing, price: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="500000000" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Type</label><select value={newListing.type} onChange={e => setNewListing({...newListing, type: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"><option value="house">House</option><option value="apartment">Apartment</option><option value="condo">Condo</option><option value="townhouse">Townhouse</option></select></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label><input type="number" value={newListing.bedrooms} onChange={e => setNewListing({...newListing, bedrooms: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="3" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Bathrooms</label><input type="number" step="0.5" value={newListing.bathrooms} onChange={e => setNewListing({...newListing, bathrooms: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="2.5" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Sq Ft</label><input type="number" value={newListing.sqft} onChange={e => setNewListing({...newListing, sqft: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="2000" /></div>
-                  <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Address</label><input value={newListing.address} onChange={e => setNewListing({...newListing, address: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="123 Main Street" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">City</label><input value={newListing.city} onChange={e => setNewListing({...newListing, city: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Lagos" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">State</label><input value={newListing.state} onChange={e => setNewListing({...newListing, state: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Lagos" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label><input value={newListing.zip} onChange={e => setNewListing({...newListing, zip: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="100001" /></div>
-                  <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Description</label><textarea value={newListing.description} onChange={e => setNewListing({...newListing, description: e.target.value})} rows={3} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Describe this property..." /></div>
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Property Images * <span className="text-gray-400 font-normal">(required)</span></label>
-                    <div
-                      onDragOver={e => e.preventDefault()}
-                      onDrop={handleImageDrop}
-                      className="rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-5 text-center transition hover:border-blue-400 hover:bg-blue-50"
-                    >
-                      <input
-                        id="listing-images"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImageUpload}
-                        className="sr-only"
-                      />
-                      <label htmlFor="listing-images" className="cursor-pointer block">
-                        <p className="text-sm font-semibold text-blue-700">Drag and drop images here</p>
-                        <p className="text-xs text-gray-500 mt-1">or click to browse and select multiple photos</p>
-                      </label>
+                {(() => {
+                  const req = (val: string) => listingValidated && !val ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-500';
+                  const AMENITIES = ['Swimming Pool', 'Gym', 'Generator', 'Security / Guard', 'BQ / Boys Quarters', 'Parking Garage', 'Air Conditioning', 'Water Treatment', 'CCTV', 'Elevator', 'Balcony', 'Garden', 'Fence / Gate'];
+                  const currentAmenities: string[] = (() => { try { return JSON.parse(newListing.description.match(/\[AMENITIES:(.*?)\]/)?.[1] || '[]'); } catch { return []; } })();
+                  const descBody = newListing.description.replace(/\[AMENITIES:.*?\]/g, '').trim();
+                  const toggleAmenity = (a: string) => {
+                    const updated = currentAmenities.includes(a) ? currentAmenities.filter(x => x !== a) : [...currentAmenities, a];
+                    const tag = updated.length ? `[AMENITIES:${JSON.stringify(updated)}]` : '';
+                    setNewListing(prev => ({ ...prev, description: descBody + (tag ? '\n' + tag : '') }));
+                  };
+                  return (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Property Title <span className="text-red-500">*</span></label>
+                      <input value={newListing.title} onChange={e => setNewListing({...newListing, title: e.target.value})} className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:border-transparent outline-none ${req(newListing.title)}`} placeholder="e.g. Modern 4-Bedroom Detached House in Lekki" />
+                      {listingValidated && !newListing.title && <p className="text-xs text-red-500 mt-1">Title is required</p>}
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">Upload at least one image. You can select multiple photos.</p>
-                    {listingError && <p className="text-sm text-red-600 mt-2">{listingError}</p>}
-                    {newListing.images.length > 0 && (
-                      <div className="mt-3 grid grid-cols-4 gap-3">
-                        {newListing.images.map((src, idx) => (
-                          <div key={idx} className="aspect-[4/3] rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                            <img src={src} alt={`Selected listing preview ${idx + 1}`} className="w-full h-full object-cover" />
-                          </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Price (₦) <span className="text-red-500">*</span></label>
+                      <input type="number" min="0" value={newListing.price} onChange={e => setNewListing({...newListing, price: e.target.value})} className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:border-transparent outline-none ${req(newListing.price)}`} placeholder="150000000" />
+                      {listingValidated && !newListing.price && <p className="text-xs text-red-500 mt-1">Price is required</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
+                      <select value={newListing.type} onChange={e => setNewListing({...newListing, type: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="house">House</option>
+                        <option value="apartment">Apartment</option>
+                        <option value="condo">Condo</option>
+                        <option value="townhouse">Townhouse</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label>
+                      <input type="number" min="0" value={newListing.bedrooms} onChange={e => setNewListing({...newListing, bedrooms: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="3" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Bathrooms</label>
+                      <input type="number" min="0" step="0.5" value={newListing.bathrooms} onChange={e => setNewListing({...newListing, bathrooms: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="2.5" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Size (sq ft)</label>
+                      <input type="number" min="0" value={newListing.sqft} onChange={e => setNewListing({...newListing, sqft: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="2000" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Full Address</label>
+                      <input value={newListing.address} onChange={e => setNewListing({...newListing, address: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. 15 Admiralty Way" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                      <select value={newListing.city} onChange={e => setNewListing({...newListing, city: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="">Select city</option>
+                        {['Lagos','Abuja','Lekki','Port Harcourt','Kano','Enugu','Ibadan','Benin City','Calabar','Kaduna','Owerri','Asaba'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                      <input value={newListing.state} onChange={e => setNewListing({...newListing, state: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Lagos" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">ZIP / Postal</label>
+                      <input value={newListing.zip} onChange={e => setNewListing({...newListing, zip: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="100001" />
+                    </div>
+                    <div className="col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">Description</label>
+                        <span className="text-xs text-gray-400">{descBody.length}/1000</span>
+                      </div>
+                      <textarea
+                        value={descBody}
+                        onChange={e => {
+                          const tag = currentAmenities.length ? `\n[AMENITIES:${JSON.stringify(currentAmenities)}]` : '';
+                          setNewListing(prev => ({ ...prev, description: e.target.value + tag }));
+                        }}
+                        rows={3}
+                        maxLength={1000}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                        placeholder="Describe this property — highlights, condition, neighbourhood..."
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Amenities & Features</label>
+                      <div className="flex flex-wrap gap-2">
+                        {AMENITIES.map(a => (
+                          <button
+                            key={a}
+                            type="button"
+                            onClick={() => toggleAmenity(a)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${currentAmenities.includes(a) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}
+                          >
+                            {a}
+                          </button>
                         ))}
                       </div>
-                    )}
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Property Images <span className="text-red-500">*</span>
+                        {newListing.images.length > 0 && <span className="ml-2 text-xs text-gray-400 font-normal">{newListing.images.length} photo{newListing.images.length !== 1 ? 's' : ''} selected</span>}
+                      </label>
+                      <div
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={handleImageDrop}
+                        className={`rounded-2xl border-2 border-dashed p-5 text-center transition ${listingValidated && !newListing.images.length ? 'border-red-300 bg-red-50/50' : 'border-blue-200 bg-blue-50/50 hover:border-blue-400 hover:bg-blue-50'}`}
+                      >
+                        <input id="listing-images" type="file" accept="image/*" multiple onChange={handleImageUpload} className="sr-only" />
+                        <label htmlFor="listing-images" className="cursor-pointer block">
+                          <p className="text-sm font-semibold text-blue-700">Drag and drop images here</p>
+                          <p className="text-xs text-gray-500 mt-1">or click to browse · select multiple photos</p>
+                        </label>
+                      </div>
+                      {listingValidated && !newListing.images.length && <p className="text-xs text-red-500 mt-1">At least one image is required</p>}
+                      {listingError && <p className="text-sm text-red-600 mt-2">{listingError}</p>}
+                      {newListing.images.length > 0 && (
+                        <div className="mt-3 grid grid-cols-4 gap-3">
+                          {newListing.images.map((src, idx) => (
+                            <div key={idx} className="relative aspect-[4/3] rounded-xl overflow-hidden border border-gray-200 bg-gray-50 group">
+                              <img src={src} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => setNewListing(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== idx) }))}
+                                className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-red-600"
+                                title="Remove"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                              {idx === 0 && <span className="absolute bottom-1 left-1 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Cover</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                  );
+                })()}
               </div>
               <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
                 <button onClick={() => setShowNewListing(false)} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition">Cancel</button>

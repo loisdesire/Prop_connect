@@ -12,7 +12,7 @@ export default function EscrowFlow() {
     {
       icon: Banknote,
       title: '2. Earnest Money Deposit',
-      description: 'Buyer deposits 3% of the purchase price into PropTrust escrow. Funds are held securely and cannot be released without mutual authorization or meeting predefined conditions.',
+      description: 'Buyer deposits 3% of the purchase price into PropConnect escrow. Funds are held securely and cannot be released without mutual authorization or meeting predefined conditions.',
       color: 'indigo',
     },
     {
@@ -58,7 +58,7 @@ export default function EscrowFlow() {
             Secure Transaction Protection
           </motion.div>
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-            How PropTrust Escrow
+            How PropConnect Escrow
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-300">Protects You</span>
           </h1>
           <p className="text-lg text-blue-100/70 max-w-2xl mx-auto">
@@ -191,7 +191,7 @@ export default function EscrowFlow() {
               <div className="mt-6 pt-6 border-t border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Shield className="w-4 h-4 text-blue-500" />
-                  Protected by PropTrust Escrow
+                  Protected by PropConnect Escrow
                 </div>
                 <button className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition">
                   View Full Details

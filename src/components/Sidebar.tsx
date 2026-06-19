@@ -1,4 +1,4 @@
-import { Home, Search, Users, MessageSquare, Wrench, Shield, LayoutDashboard, ChevronLeft, ChevronRight, LogOut, Settings, X, Building2 } from 'lucide-react';
+import { Home, Search, Users, MessageSquare, Wrench, Shield, LayoutDashboard, ChevronLeft, ChevronRight, LogOut, Settings, X, Building2, Heart } from 'lucide-react';
 
 interface SidebarProps {
   currentPath: string;
@@ -12,11 +12,13 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   mobileOpen: boolean;
   onMobileClose: () => void;
+  messagesBadge?: number;
 }
 
 const NAV = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/listings', label: 'Browse Listings', icon: Search },
+  { path: '/saved', label: 'Saved Properties', icon: Heart },
   { path: '/agents', label: 'Agents', icon: Users },
   { path: '/messages', label: 'Messages', icon: MessageSquare },
   { path: '/services', label: 'Services', icon: Wrench },
@@ -28,7 +30,7 @@ const initials = (name: string | null) => {
   return name.split(' ').filter(Boolean).map(p => p[0]).join('').slice(0, 2).toUpperCase();
 };
 
-function SidebarContent({ currentPath, onNavigate, onSignOut, userName, userEmail, userAvatar, userRole, collapsed, onToggleCollapse, onMobileClose }: Omit<SidebarProps, 'mobileOpen'>) {
+function SidebarContent({ currentPath, onNavigate, onSignOut, userName, userEmail, userAvatar, userRole, collapsed, onToggleCollapse, onMobileClose, messagesBadge }: Omit<SidebarProps, 'mobileOpen'>) {
   const nav = [
     ...NAV,
     ...(userRole === 'realtor' ? [{ path: '/realtor/portal', label: 'Realtor Portal', icon: LayoutDashboard }] : []),
@@ -71,6 +73,8 @@ function SidebarContent({ currentPath, onNavigate, onSignOut, userName, userEmai
       <nav className="flex-1 overflow-y-auto py-3 space-y-0.5 px-2">
         {nav.map(({ path, label, icon: Icon }) => {
           const active = isActive(path);
+          const isMessages = path === '/messages';
+          const showBadge = isMessages && (messagesBadge ?? 0) > 0;
           return (
             <button
               key={path}
@@ -82,9 +86,19 @@ function SidebarContent({ currentPath, onNavigate, onSignOut, userName, userEmai
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               } ${collapsed ? 'justify-center' : ''}`}
             >
-              <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-blue-600' : 'text-gray-400'}`} />
-              {!collapsed && <span className="truncate">{label}</span>}
-              {active && !collapsed && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              <div className="relative shrink-0">
+                <Icon className={`w-5 h-5 ${active ? 'text-blue-600' : 'text-gray-400'}`} />
+                {showBadge && collapsed && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+                )}
+              </div>
+              {!collapsed && <span className="truncate flex-1 text-left">{label}</span>}
+              {!collapsed && showBadge && (
+                <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                  {messagesBadge! > 99 ? '99+' : messagesBadge}
+                </span>
+              )}
+              {active && !collapsed && !showBadge && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
             </button>
           );
         })}

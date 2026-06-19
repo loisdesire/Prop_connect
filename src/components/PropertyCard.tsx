@@ -13,9 +13,11 @@ interface PropertyCardProps {
   onView: (property: PropertyType) => void;
   onViewAgent?: (agentId: number) => void;
   index?: number;
+  isFavourited?: boolean;
+  onToggleFavourite?: (id: number) => void;
 }
 
-export default function PropertyCard({ property, onView, onViewAgent, index = 0 }: PropertyCardProps) {
+export default function PropertyCard({ property, onView, onViewAgent, index = 0, isFavourited = false, onToggleFavourite }: PropertyCardProps) {
   const price = safeNum(property.price, 0);
   const bedrooms = safeNum(property.bedrooms, 0);
   const bathrooms = safeNum(property.bathrooms, 0);
@@ -67,8 +69,12 @@ export default function PropertyCard({ property, onView, onViewAgent, index = 0 
             {property.type || 'Property'}
           </span>
         </div>
-        <button className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full hover:bg-white transition shadow-sm" onClick={e => e.stopPropagation()}>
-          <Heart className="w-4 h-4 text-gray-400 hover:text-red-500 transition" />
+        <button
+          className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full hover:bg-white transition shadow-sm"
+          onClick={e => { e.stopPropagation(); onToggleFavourite?.(property.id); }}
+          title={isFavourited ? 'Remove from saved' : 'Save property'}
+        >
+          <Heart className={`w-4 h-4 transition ${isFavourited ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'}`} />
         </button>
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black/40 to-transparent" />
         <div className="absolute bottom-3 left-3">
