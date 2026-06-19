@@ -8,11 +8,11 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const { id, type, minPrice, maxPrice, bedrooms, bathrooms, city, status, search, limit = '20', offset = '0' } = req.query;
-      
+      const { id, type, minPrice, maxPrice, bedrooms, bathrooms, city, status, search, sortBy, limit = '20', offset = '0' } = req.query;
+
       let query = supabase.from('properties').select('*', { count: 'exact' });
       if (id) query = query.eq('id', parseInt(id));
-      
+
       if (type) query = query.eq('type', type);
       if (status) query = query.eq('status', status);
       if (bedrooms) query = query.gte('bedrooms', parseInt(bedrooms));
@@ -23,9 +23,17 @@ export default async function handler(req, res) {
       if (search) {
         query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,address.ilike.%${search}%,city.ilike.%${search}%`);
       }
-      
+
+      const sortMap = {
+        price_asc:  { col: 'price',      asc: true },
+        price_desc: { col: 'price',      asc: false },
+        newest:     { col: 'created_at', asc: false },
+        oldest:     { col: 'created_at', asc: true },
+      };
+      const sort = sortMap[sortBy] || { col: 'created_at', asc: false };
+
       const { data, error, count } = await query
-        .order('created_at', { ascending: false })
+        .order(sort.col, { ascending: sort.asc })
         .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
       
       if (error) throw error;
@@ -72,7 +80,7 @@ export default async function handler(req, res) {
     }
     
     if (req.method === 'POST') {
-      const { agent_id, title, description, price, bedrooms, bathrooms, sqft, address, city, state, zip, lat, lng, type, images, features } = req.body;
+      const { agent_id, title, description, price, bedrooms, bathrooms, sqft, address, city, state, zip, lat, lng, type, images, features, amenities } = req.body;
 
       if (!agent_id) {
         return res.status(400).json({ error: 'agent_id is required' });
@@ -90,7 +98,7 @@ export default async function handler(req, res) {
         .from('properties')
         .insert({ 
           agent_id, title, description, price, bedrooms, bathrooms, sqft, address, city, state, zip, lat, lng, type,
-          images: images || [], features: features || [], status: 'available' 
+          images: images || [], features: features || [], amenities: amenities || [], status: 'available'
         })
         .select()
         .single();

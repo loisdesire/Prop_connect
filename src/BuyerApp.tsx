@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import GuestHeader from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -13,7 +13,7 @@ import Dashboard from './components/Dashboard';
 import ProfilePage from './components/ProfilePage';
 import Services, { serviceFromSlug } from './components/Services';
 import { buildConversationRouteState } from './lib/messageFlow';
-import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star, Eye, EyeOff, User, Menu, Building2 } from 'lucide-react';
+import { Building as BuildingIcon, Search as SearchIcon, TrendingUp, Shield as ShieldIcon, ChevronRight, Star, Eye, EyeOff, User, Menu, Building2, Heart, X as XIcon, Phone, Clock, DollarSign } from 'lucide-react';
 import { safeNum, safeStr, safeJsonArr } from './lib/utils';
 import { motion } from 'framer-motion';
 import type { Agent, Property } from './types';
@@ -46,6 +46,19 @@ export default function BuyerApp() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
+  const [favouriteIds, setFavouriteIds] = useState<Set<number>>(new Set());
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [inquiryModal, setInquiryModal] = useState<{
+    open: boolean;
+    agentId: number | null;
+    propertyName: string;
+    propertyPrice: number;
+    agentDetails: { name?: string; avatar_url?: string | null; company?: string; email?: string } | null;
+    phone: string;
+    timeline: string;
+    message: string;
+  }>({ open: false, agentId: null, propertyName: '', propertyPrice: 0, agentDetails: null, phone: '', timeline: '', message: '' });
+  const realtimeChannelRef = useRef<any>(null);
 
   const fetchProperties = useCallback(async (filterParams?: FilterState) => {
     setLoading(true);
@@ -170,8 +183,51 @@ export default function BuyerApp() {
     };
   }, []);
 
+  // Load favourites from localStorage keyed by user
+  useEffect(() => {
+    const key = `favourites_${currentUserId}`;
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) setFavouriteIds(new Set(JSON.parse(stored)));
+    } catch { /* ignore */ }
+  }, [currentUserId]);
+
+  const toggleFavourite = useCallback((id: number) => {
+    setFavouriteIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem(`favourites_${currentUserId}`, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }, [currentUserId]);
+
+  // Supabase Realtime — count unread messages for this user
+  useEffect(() => {
+    if (!isAuthenticated || !currentUserId || currentUserId === 'guest-user') return;
+
+    // Initial unread count
+    supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('receiver_id', currentUserId)
+      .eq('read', false)
+      .then(({ count }) => { if (count) setUnreadCount(count); });
+
+    const channel = supabase
+      .channel(`unread-${currentUserId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${currentUserId}` }, () => {
+        setUnreadCount(prev => prev + 1);
+      })
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+    return () => { supabase.removeChannel(channel); };
+  }, [isAuthenticated, currentUserId]);
+
   useEffect(() => {
     window.scrollTo(0, 0);
+    // Clear unread badge when user navigates to messages
+    if (location.pathname === '/messages') setUnreadCount(0);
   }, [location.pathname]);
 
   const handleSearch = (searchFilters: FilterState) => {
@@ -202,13 +258,30 @@ export default function BuyerApp() {
     navigate(`/agents/${agentId}`);
   };
 
-  const handleMessageAgent = (agentId: number, propertyName: string, agentDetails?: { name?: string; avatar_url?: string | null; company?: string; email?: string }) => {
+  const handleMessageAgent = (agentId: number, propertyName: string, agentDetails?: { name?: string; avatar_url?: string | null; company?: string; email?: string }, propertyPrice?: number) => {
     const agentName = agentDetails?.name || agents.find(a => a.id === agentId)?.name || 'Agent';
-    const draftMessage = `Hi ${agentName}, I’m interested in ${propertyName}. Please let me know a bit more about it and how to proceed.`;
-
-    navigate('/messages', {
-      state: buildConversationRouteState(agentId, agentName, propertyName, draftMessage),
+    setInquiryModal({
+      open: true,
+      agentId,
+      propertyName,
+      propertyPrice: propertyPrice || 0,
+      agentDetails: agentDetails || { name: agentName },
+      phone: '',
+      timeline: '',
+      message: `Hi ${agentName}, I'm interested in ${propertyName}. Please let me know more about it and how to proceed.`,
     });
+  };
+
+  const submitInquiry = () => {
+    if (!inquiryModal.agentId) return;
+    const { agentId, propertyName, agentDetails, phone, timeline, message } = inquiryModal;
+    const agentName = agentDetails?.name || 'Agent';
+    const parts = [message];
+    if (phone) parts.push(`Phone: ${phone}`);
+    if (timeline) parts.push(`Move-in timeline: ${timeline}`);
+    const draft = parts.join('\n');
+    setInquiryModal(prev => ({ ...prev, open: false }));
+    navigate('/messages', { state: buildConversationRouteState(agentId, agentName, propertyName, draft) });
   };
 
   const handleStartEscrow = (property: Property) => {
@@ -304,7 +377,7 @@ export default function BuyerApp() {
               ) : (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   {hotProperties.map((property, i) => (
-                    <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
+                    <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} isFavourited={favouriteIds.has(property.id)} onToggleFavourite={toggleFavourite} />
                   ))}
                 </div>
               )}
@@ -338,7 +411,7 @@ export default function BuyerApp() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                   {properties.slice(0, 6).map((property, i) => (
-                    <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
+                    <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} isFavourited={favouriteIds.has(property.id)} onToggleFavourite={toggleFavourite} />
                   ))}
                 </div>
               )}
@@ -422,7 +495,7 @@ export default function BuyerApp() {
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {properties.slice(0, 6).map((property, i) => (
-                  <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} />
+                  <PropertyCard key={property.id} property={property} onView={handleViewProperty} onViewAgent={handleOpenAgentProfile} index={i} isFavourited={favouriteIds.has(property.id)} onToggleFavourite={toggleFavourite} />
                 ))}
               </div>
             )}
@@ -496,6 +569,46 @@ export default function BuyerApp() {
     );
   };
 
+  const renderSaved = () => {
+    const saved = properties.filter(p => favouriteIds.has(p.id));
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-6">
+          <div className="max-w-6xl mx-auto">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Heart className="w-6 h-6 text-red-500 fill-red-500" /> Saved Properties
+            </h1>
+            <p className="text-gray-500 mt-1 text-sm">{saved.length > 0 ? `${saved.length} property${saved.length !== 1 ? 'ies' : ''} saved` : 'No saved properties yet'}</p>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+          {saved.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-2xl border border-gray-100">
+              <Heart className="w-14 h-14 text-gray-200 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Nothing saved yet</h3>
+              <p className="text-gray-400 text-sm mb-6">Tap the heart icon on any listing to save it here</p>
+              <button onClick={() => navigate('/listings')} className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition">Browse Listings</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {saved.map((property, i) => (
+                <PropertyCard
+                  key={property.id}
+                  property={property}
+                  onView={handleViewProperty}
+                  onViewAgent={handleOpenAgentProfile}
+                  index={i}
+                  isFavourited={true}
+                  onToggleFavourite={toggleFavourite}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderListings = () => (
     <div className="min-h-screen bg-gray-50">
       <SearchFilters filters={filters} onFilterChange={handleFilterChange} resultCount={totalCount} />
@@ -519,7 +632,7 @@ export default function BuyerApp() {
           <>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {properties.map((property, i) => (
-                <PropertyCard key={property.id} property={property} onView={handleViewProperty} index={i} />
+                <PropertyCard key={property.id} property={property} onView={handleViewProperty} index={i} isFavourited={favouriteIds.has(property.id)} onToggleFavourite={toggleFavourite} />
               ))}
             </div>
             {totalCount > properties.length && (
@@ -613,7 +726,7 @@ export default function BuyerApp() {
       <PropertyDetail
         property={property}
         onBack={() => navigate('/listings')}
-        onMessageAgent={handleMessageAgent}
+        onMessageAgent={(agentId, propertyName, agentDetails) => handleMessageAgent(agentId, propertyName, agentDetails, safeNum(property.price, 0))}
         onStartEscrow={handleStartEscrow}
         onViewAgent={handleOpenAgentProfile}
       />
@@ -785,6 +898,7 @@ export default function BuyerApp() {
       <Routes>
         <Route index element={renderHome()} />
         <Route path="listings" element={renderListings()} />
+        <Route path="saved" element={<RequireAuth>{renderSaved()}</RequireAuth>} />
         <Route path="agents" element={renderAgents()} />
         <Route path="messages" element={<RequireAuth><Messages onBack={() => navigate('/listings')} /></RequireAuth>} />
         <Route path="escrow" element={<EscrowFlow />} />
@@ -816,6 +930,7 @@ export default function BuyerApp() {
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           mobileOpen={sidebarMobileOpen}
           onMobileClose={() => setSidebarMobileOpen(false)}
+          messagesBadge={unreadCount}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Mobile-only top bar — just a hamburger to open the sidebar */}
@@ -834,6 +949,64 @@ export default function BuyerApp() {
             {mainContent}
           </main>
         </div>
+
+        {/* Inquiry Modal */}
+        {inquiryModal.open && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setInquiryModal(prev => ({ ...prev, open: false }))}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Contact Agent</h2>
+                  <p className="text-sm text-gray-500 truncate">{inquiryModal.propertyName}</p>
+                </div>
+                <button onClick={() => setInquiryModal(prev => ({ ...prev, open: false }))} className="p-2 hover:bg-gray-100 rounded-lg transition">
+                  <XIcon className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5"><Phone className="w-4 h-4 text-gray-400" /> Phone Number</label>
+                  <input
+                    type="tel"
+                    value={inquiryModal.phone}
+                    onChange={e => setInquiryModal(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="+234 800 000 0000"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5"><Clock className="w-4 h-4 text-gray-400" /> Move-in Timeline</label>
+                  <select
+                    value={inquiryModal.timeline}
+                    onChange={e => setInquiryModal(prev => ({ ...prev, timeline: e.target.value }))}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  >
+                    <option value="">Select timeline</option>
+                    <option value="As soon as possible">As soon as possible</option>
+                    <option value="Within 1 month">Within 1 month</option>
+                    <option value="1–3 months">1–3 months</option>
+                    <option value="3–6 months">3–6 months</option>
+                    <option value="6–12 months">6–12 months</option>
+                    <option value="Just browsing">Just browsing</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                  <textarea
+                    value={inquiryModal.message}
+                    onChange={e => setInquiryModal(prev => ({ ...prev, message: e.target.value }))}
+                    rows={4}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+                  />
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+                <button onClick={() => setInquiryModal(prev => ({ ...prev, open: false }))} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition">Cancel</button>
+                <button onClick={submitInquiry} className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/25">Send Message</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
